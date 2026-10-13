@@ -1,5 +1,5 @@
-import { GOAL_DISTANCE } from '../game/constants';
 import type { Earnings } from '../game/economy';
+import { MAPS } from '../game/maps';
 import type { SaveData } from '../game/save';
 import { STATS, buildSummary, statMax } from '../game/stats';
 import {
@@ -8,7 +8,10 @@ import {
   CATEGORY_LABEL,
   SENSOR_FEATURE_LABEL,
   SENSOR_SLOT_LABEL,
+  MAX_GADGETS,
   SHOP_CATEGORIES,
+  SHOP_UNLOCK,
+  itemUnlocked,
   loadoutFor,
   sensorConflicts,
   type Category,
@@ -18,7 +21,7 @@ import {
   type ShopCategory,
 } from '../game/upgrades';
 import { drawPanda } from '../render/panda';
-import { drawItemPreview, drawSensorRack } from '../render/preview';
+import { drawGadgetRack, drawItemPreview, drawSensorRack } from '../render/preview';
 import { $, h, metres, money } from './dom';
 
 export interface ScreenActions {
@@ -28,7 +31,8 @@ export interface ScreenActions {
   closeShop(): void;
   buy(category: ShopCategory, id: string): void;
   equip(category: ShopCategory, id: string): void;
-  unequipSensor(id: string): void;
+  unequip(category: ShopCategory, id: string): void;
+  switchMap(): void;
   launch(): void;
   toTitle(): void;
   toggleMute(): void;
@@ -123,7 +127,7 @@ export class Screens {
       <div class="paper title-panel">
         <h1 class="logo"><span class="w1">${bouncy('Panda')}</span><span class="w2">${bouncy('Plane', 5)}</span></h1>
         <p class="tagline">One small panda. One very big sky.</p>
-        <p class="story">Bamboo grows sweetest in <b>Panda Paradise</b>, ${metres(GOAL_DISTANCE)} past the mountains.
+        <p class="story">Bamboo grows sweetest in <b>Panda Paradise</b>, ${metres(MAPS.valley.goal)} past the mountains.
         Slide, glide and rocket your way there. Earn cash every flight and build the perfect flying machine.</p>
         <div class="buttons">
           <button class="btn primary big" data-a="play">${hasSave ? 'Keep flying!' : "Let's fly!"}</button>
@@ -157,24 +161,34 @@ export class Screens {
         ${left}
         <div class="chip day"><small>Day</small><b>${save.day}</b></div>
         <div class="chip cash"><small>Bamboo bucks</small><b>${money(save.money)}</b></div>
-        <div class="chip best"><small>Best</small><b>${metres(save.best.distance)}</b></div>
+        <div class="chip best"><small>Best</small><b>${metres(save.progress[save.map].best.distance)}</b></div>
       </header>`;
   }
 
   showHangar(save: SaveData, says: string): void {
-    const gear = loadoutFor(save.equipped, save.sensors);
+    const gear = loadoutFor(save.equipped, save.sensors, save.gadgets);
     const sum = buildSummary(gear);
-    const progress = Math.min(1, save.best.distance / GOAL_DISTANCE);
+    const map = MAPS[save.map];
+    const prog = save.progress[save.map];
+    const progress = Math.min(1, prog.best.distance / map.goal);
     const tiles = SHOP_CATEGORIES.map((c) => {
-      const label =
-        c === 'sensor'
-          ? gear.sensors.length
-            ? `${gear.sensors.length} equipped`
-            : 'None equipped'
-          : (gear[c] as Item).name;
+      const needs = SHOP_UNLOCK[c];
+      if (needs && !save.unlocked.includes(needs)) {
+        return `
+        <div class="tile locked">
+          <span class="tile-head"><span class="icon">${CATEGORY_ICON[c]}</span>${CATEGORY_LABEL[c]}</span>
+          <span class="lock-art">🔒</span>
+          <span class="tile-item">Reach ${MAPS.valley.goalName}</span>
+          <span class="tile-foot">Unlocks with ${MAPS[needs].name}</span>
+        </div>`;
+      }
+      const multi = c === 'sensor' ? gear.sensors : c === 'gadget' ? gear.gadgets : null;
+      const label = multi ? (multi.length ? `${multi.length} equipped` : 'None equipped') : (gear[c as Category] as Item).name;
       const owned = save.owned[c].length;
       const total = CATALOG[c].length;
-      const affordable = (CATALOG[c] as Item[]).some((i) => !save.owned[c].includes(i.id) && i.cost <= save.money);
+      const affordable = (CATALOG[c] as Item[]).some(
+        (i) => !save.owned[c].includes(i.id) && i.cost <= save.money && itemUnlocked(i, save.unlocked),
+      );
       return `
         <button class="tile" data-shop="${c}">
           <span class="tile-head"><span class="icon">${CATEGORY_ICON[c]}</span>${CATEGORY_LABEL[c]}
@@ -184,14 +198,19 @@ export class Screens {
           <span class="tile-foot">${owned}/${total} owned <span class="go">Shop ›</span></span>
         </button>`;
     }).join('');
+    const mapButton =
+      save.unlocked.length > 1
+        ? `<button class="btn map-switch" data-a="map" title="Switch map">🗺️ ${escape(map.name)} <span>⇄</span></button>`
+        : `<span class="map-name">🗺️ ${escape(map.name)}</span>`;
     const el = h(`
-      <div class="hangar">
+      <div class="hangar map-${map.id}">
         ${this.header(save, '<button class="btn icon" data-a="menu" aria-label="Menu">☰</button><h2 class="sign-title">The Hangar</h2>')}
         <div class="goal">
+          ${mapButton}
           <span>🐼</span>
           <div class="goal-track"><div class="goal-fill" style="width:${(progress * 100).toFixed(1)}%"></div></div>
-          <span>🎋</span>
-          <em>${save.goalReached ? 'Paradise reached!' : `${Math.round(progress * 100)}% to Paradise`}</em>
+          <span>${map.id === 'canyon' ? '🏯' : '🎋'}</span>
+          <em>${prog.goalReached ? `${map.goalName} reached!` : `${Math.round(progress * 100)}% to ${map.goalName}`}</em>
         </div>
         <div class="hangar-body">
           <section class="paper mascot">
@@ -216,7 +235,11 @@ export class Screens {
       previews.push({
         canvas,
         draw: (t) =>
-          c === 'sensor' ? drawSensorRack(canvas, gear.sensors, t) : drawItemPreview(canvas, c, gear[c as Category] as Item, gear, t),
+          c === 'sensor'
+            ? drawSensorRack(canvas, gear.sensors, t)
+            : c === 'gadget'
+              ? drawGadgetRack(canvas, gear.gadgets, t)
+              : drawItemPreview(canvas, c, gear[c as Category] as Item, gear, t),
       });
     });
     el.querySelectorAll<HTMLElement>('[data-shop]').forEach((b) =>
@@ -224,22 +247,30 @@ export class Screens {
     );
     el.querySelector('[data-a="launch"]')!.addEventListener('click', () => this.act.launch());
     el.querySelector('[data-a="menu"]')!.addEventListener('click', () => this.act.toTitle());
+    el.querySelector('[data-a="map"]')?.addEventListener('click', () => this.act.switchMap());
     this.mount(el, 'menu-bg');
     this.previews = previews;
   }
 
   showShop(save: SaveData, category: ShopCategory, says: string): void {
-    const gear = loadoutFor(save.equipped, save.sensors);
+    const gear = loadoutFor(save.equipped, save.sensors, save.gadgets);
     const isSensor = category === 'sensor';
-    // Sensors have no single "equipped" item to compare against.
-    const equipped = isSensor ? null : (gear[category] as Item);
+    const isGadget = category === 'gadget';
+    const multi = isSensor || isGadget;
+    // Multi-equip shops have no single "equipped" item to compare against.
+    const equipped = multi ? null : (gear[category as Category] as Item);
     const stats = STATS[category];
     const maxes = stats.map((s) => statMax(category, s, gear));
     const items = CATALOG[category] as Item[];
     const cards = items
       .map((item) => {
         const owned = save.owned[category].includes(item.id);
-        const isEquipped = isSensor ? save.sensors.includes(item.id) : item.id === equipped!.id;
+        const isEquipped = isSensor
+          ? save.sensors.includes(item.id)
+          : isGadget
+            ? save.gadgets.includes(item.id)
+            : item.id === equipped!.id;
+        const locked = !itemUnlocked(item, save.unlocked);
         const rows = stats
           .map((s, si) => {
             const v = s.value(item, gear);
@@ -259,23 +290,33 @@ export class Screens {
           })
           .join('');
         const afford = save.money >= item.cost;
-        const action = isEquipped
-          ? isSensor
-            ? `<button class="btn equip on" data-unequip="${item.id}">Equipped ✓ <small>(remove)</small></button>`
-            : '<button class="btn equip on" disabled>Equipped ✓</button>'
-          : owned
-            ? `<button class="btn equip" data-equip="${item.id}">Equip</button>`
-            : `<button class="btn buy ${afford ? '' : 'disabled'}" data-buy="${item.id}">Buy ${money(item.cost)}</button>`;
+        const action = locked
+          ? `<button class="btn buy disabled" disabled>🔒 ${escape(MAPS[item.unlock!].name)}</button>`
+          : isEquipped
+            ? multi
+              ? `<button class="btn equip on" data-unequip="${item.id}">Equipped ✓ <small>(remove)</small></button>`
+              : '<button class="btn equip on" disabled>Equipped ✓</button>'
+            : owned
+              ? `<button class="btn equip" data-equip="${item.id}">Equip</button>`
+              : `<button class="btn buy ${afford ? '' : 'disabled'}" data-buy="${item.id}">Buy ${money(item.cost)}</button>`;
         const sensorInfo = isSensor ? this.sensorInfo(item as SensorItem, save.sensors, isEquipped) : '';
-        const tag = owned ? '<span class="sticker">Owned</span>' : `<span class="price-tag">${item.cost ? money(item.cost) : 'Free'}</span>`;
+        const gadgetInfo =
+          isGadget && !isEquipped && save.gadgets.length >= MAX_GADGETS
+            ? `<p class="replaces">Replaces ${escape(CATALOG.gadget.find((g) => g.id === save.gadgets[0])?.name ?? '')}</p>`
+            : '';
+        const tag = locked
+          ? '<span class="sticker lock">Locked</span>'
+          : owned
+            ? '<span class="sticker">Owned</span>'
+            : `<span class="price-tag">${item.cost ? money(item.cost) : 'Free'}</span>`;
         return `
-          <article class="paper item ${isEquipped ? 'is-equipped' : ''} ${owned ? 'is-owned' : ''}">
+          <article class="paper item ${isEquipped ? 'is-equipped' : ''} ${owned ? 'is-owned' : ''} ${locked ? 'is-locked' : ''}">
             ${tag}
             <canvas class="preview" data-item="${item.id}"></canvas>
             <h3>${escape(item.name)}</h3>
             ${item.perk ? `<span class="perk">✨ ${escape(item.perk)}</span>` : ''}
             <p class="blurb">${escape(item.blurb)}</p>
-            ${sensorInfo}
+            ${sensorInfo}${gadgetInfo}
             <div class="stats">${rows}</div>
             ${action}
           </article>`;
@@ -286,6 +327,8 @@ export class Screens {
         ${this.header(save, `<button class="btn icon back" data-a="back">‹ Hangar</button><h2 class="sign-title"><span class="icon">${CATEGORY_ICON[category]}</span> ${CATEGORY_LABEL[category]}</h2>`)}
         <div class="shop-says"><span class="mini-panda">🐼</span><div class="bubble left">${escape(says)}</div></div>
         ${isSensor ? '<p class="shop-note">Equip as many instruments as you like, but only one per slot. Without one, that reading stays hidden in flight.</p>' : ''}
+        ${isGadget ? `<p class="shop-note">Wear up to ${MAX_GADGETS} gadgets at once.</p>` : ''}
+        ${category === 'weapon' ? `<p class="shop-note">Hold <b>${isTouch() ? 'FIRE' : 'F'}</b> to shoot where your nose points. Enemies only show up in ${MAPS.canyon.name}.</p>` : ''}
         <div class="items">${cards}</div>
       </div>`);
     const previews: Preview[] = [];
@@ -300,7 +343,7 @@ export class Screens {
       b.addEventListener('click', () => this.act.equip(category, b.dataset.equip!)),
     );
     el.querySelectorAll<HTMLElement>('[data-unequip]').forEach((b) =>
-      b.addEventListener('click', () => this.act.unequipSensor(b.dataset.unequip!)),
+      b.addEventListener('click', () => this.act.unequip(category, b.dataset.unequip!)),
     );
     el.querySelector('[data-a="back"]')!.addEventListener('click', () => this.act.closeShop());
     const scroll = this.root.querySelector('.items')?.scrollTop ?? 0;
@@ -321,6 +364,11 @@ export class Screens {
     return `<div class="features">${shows}</div><div class="slots">Slot${item.slots.length > 1 ? 's' : ''}: ${slots}</div>${note}`;
   }
 
+  /** True when the hangar (not a shop) is on screen. */
+  inHangar(): boolean {
+    return !!this.root.querySelector('.hangar');
+  }
+
   /** Finishes the results animation, if one is playing. Returns false when there was nothing to skip. */
   private skipResults: (() => boolean) | null = null;
 
@@ -331,7 +379,7 @@ export class Screens {
     else if (this.root.querySelector('.victory')) this.act.continueFromVictory();
   }
 
-  showResults(day: number, earnings: Earnings, says: string, onDone: () => void): void {
+  showResults(day: number, mapName: string, earnings: Earnings, says: string, onDone: () => void): void {
     const rows = earnings.lines
       .map(
         (l, i) =>
@@ -347,7 +395,7 @@ export class Screens {
     const hint = isTouch() ? 'Tap anywhere to continue' : 'Press Space to continue';
     const el = h(`
       <div class="notebook results">
-        <h2>Flight log <small>Day ${day}</small></h2>
+        <h2>Flight log <small>Day ${day} · ${escape(mapName)}</small></h2>
         <ul class="lines">${rows}</ul>
         <div class="stamps">${stamps}</div>
         <div class="total"><span>Total earned</span><b data-total>$0</b></div>
@@ -394,13 +442,21 @@ export class Screens {
     };
   }
 
-  showVictory(day: number): void {
+  showVictory(day: number, mapId: SaveData['map'], unlockedName: string | null): void {
+    const map = MAPS[mapId];
+    const story =
+      mapId === 'valley'
+        ? 'our panda finally reached the sweetest bamboo in the world.'
+        : 'our panda crossed the canyon of fire and rang the bell of the Golden Pagoda.';
+    const unlock = unlockedName
+      ? `<p class="unlock-banner">🔓 New map unlocked: <b>${escape(unlockedName)}</b>!<br><small>Plus new shops: Weapons and Gadgets, and new top-tier gear.</small></p>`
+      : '<p>The sky is still big, though. Keep flying for new records!</p>';
     const el = h(`
       <div class="paper victory">
-        <div class="confetti-row">🎋🐼🎋</div>
-        <h2>Panda Paradise!</h2>
-        <p>After <b>${day}</b> day${day === 1 ? '' : 's'} of slides, glides and questionable rockets, our panda finally reached the sweetest bamboo in the world.</p>
-        <p>The sky is still big, though. Keep flying for new records!</p>
+        <div class="confetti-row">${mapId === 'canyon' ? '🏯🐼🏯' : '🎋🐼🎋'}</div>
+        <h2>${escape(map.goalName)}!</h2>
+        <p>After <b>${day}</b> day${day === 1 ? '' : 's'} of slides, glides and questionable rockets, ${story}</p>
+        ${unlock}
         <button class="btn primary big" data-a="ok">Keep flying</button>
       </div>`);
     el.querySelector('[data-a="ok"]')!.addEventListener('click', () => this.act.continueFromVictory());

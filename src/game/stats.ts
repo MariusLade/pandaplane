@@ -11,6 +11,7 @@ import {
   type RampItem,
   type RocketItem,
   type SledItem,
+  type WeaponItem,
   type ShopCategory,
 } from './upgrades';
 import { World } from './world';
@@ -172,6 +173,34 @@ export const STATS: Record<ShopCategory, StatDef[]> = {
     weight,
   ],
   sensor: [weight],
+  weapon: [
+    {
+      key: 'damage',
+      label: 'Damage',
+      hint: 'Crows have 1 HP, fire bats 2, bandit balloons 4.',
+      better: 'higher',
+      value: (i) => (i as WeaponItem).damage,
+      format: (v) => (v > 0 ? `${v}` : '—'),
+    },
+    {
+      key: 'rate',
+      label: 'Fire rate',
+      hint: 'Shots per second while FIRE is held.',
+      better: 'higher',
+      value: (i) => (i as WeaponItem).rate,
+      format: (v) => (v > 0 ? `${v}/s` : '—'),
+    },
+    {
+      key: 'ammo',
+      label: 'Ammo',
+      hint: 'Shots per flight.',
+      better: 'higher',
+      value: (i) => (i as WeaponItem).ammo,
+      format: (v) => (v > 0 ? `${v}` : '—'),
+    },
+    weight,
+  ],
+  gadget: [weight],
 };
 
 /** Largest value of a stat across the category, for scaling bars. */

@@ -5,8 +5,18 @@ import { autopilot } from './game/autopilot';
 import { computeEarnings, updateRecords } from './game/economy';
 import { Flight, type FlightInput } from './game/flight';
 import { clearSave, loadSave, newSave, writeSave, type SaveData } from './game/save';
-import { equipSensor, findItem, loadoutByIndex, loadoutFor, type Loadout, type ShopCategory } from './game/upgrades';
-import { biomeAt, World } from './game/world';
+import { MAPS, MAP_ORDER } from './game/maps';
+import {
+  MAX_GADGETS,
+  equipSensor,
+  findItem,
+  itemUnlocked,
+  loadoutByIndex,
+  loadoutFor,
+  type Loadout,
+  type ShopCategory,
+} from './game/upgrades';
+import { mainBiome, World } from './game/world';
 import type { Mood } from './render/panda';
 import { Renderer, type CameraMode } from './render/renderer';
 import { $ } from './ui/dom';
@@ -20,7 +30,7 @@ type Mode = 'title' | 'hangar' | 'flight' | 'results' | 'victory';
 const STEP = 1 / 120;
 /** Seconds to admire the landing before the flight log appears. */
 const DONE_PAUSE = 0.8;
-const DEMO_GEAR = loadoutByIndex({ ramp: 4, sled: 4, glider: 6, rocket: 3, fuel: 3 });
+const DEMO_GEAR = loadoutByIndex({ ramp: 5, sled: 5, glider: 7, rocket: 4, fuel: 3 });
 /** Minimum seconds between the panda's in-flight comments. */
 const CHATTER_COOLDOWN = 2.5;
 
@@ -38,6 +48,9 @@ class Game {
   private lastImpact = 0;
   private biomeName = '';
   private pendingVictory = false;
+  /** Map unlocked by the flight that reached the goal, for the victory screen. */
+  private newlyUnlocked: string | null = null;
+  private victoryMap: SaveData['map'] = 'valley';
   private lastChatter = -10;
   private honkTimer = 0;
   private wasBoosting = false;
@@ -58,14 +71,15 @@ class Game {
     this.hasSave = loaded !== null;
     this.save = loaded ?? newSave();
     this.sound.muted = this.save.muted;
-    this.world = new World(this.save.worldSeed, this.save.worldSeed + this.save.day * 7919);
+    this.world = this.makeWorld(this.save.worldSeed + this.save.day * 7919);
     this.flight = this.makeDemo();
-    this.renderer = new Renderer($('#game') as HTMLCanvasElement, this.save.worldSeed);
+    this.renderer = new Renderer($('#game') as HTMLCanvasElement, this.save.worldSeed + MAPS[this.save.map].seedSalt);
 
     this.input.onFirstGesture = () => this.sound.unlock();
     this.input.bindButton($('#btn-up'), 'up');
     this.input.bindButton($('#btn-down'), 'down');
     this.input.bindButton($('#btn-boost'), 'boost');
+    this.input.bindButton($('#btn-fire'), 'fire');
     this.prompt.addEventListener('pointerdown', () => this.startSlide());
 
     this.screens = new Screens({
@@ -74,14 +88,15 @@ class Game {
         clearSave();
         this.save = newSave();
         this.save.muted = this.sound.muted;
-        this.renderer.bg.setSeed(this.save.worldSeed);
+        this.renderer.bg.setSeed(this.save.worldSeed + MAPS[this.save.map].seedSalt);
         this.toHangar();
       },
       openShop: (c) => this.openShop(c),
       closeShop: () => this.toHangar(quip('hangar')),
       buy: (c, id) => this.buy(c, id),
       equip: (c, id) => this.equip(c, id),
-      unequipSensor: (id) => this.unequipSensor(id),
+      unequip: (c, id) => this.unequip(c, id),
+      switchMap: () => this.switchMap(),
       launch: () => this.launch(),
       toTitle: () => this.toTitle(),
       toggleMute: () => {
@@ -99,7 +114,7 @@ class Game {
           this.pendingVictory = false;
           this.mode = 'victory';
           this.sound.fanfare();
-          this.screens.showVictory(this.save.goalDay ?? this.save.day);
+          this.screens.showVictory(this.save.progress[this.victoryMap].goalDay ?? this.save.day, this.victoryMap, this.newlyUnlocked);
         } else this.toHangar();
       },
       continueFromVictory: () => this.toHangar(),
@@ -124,12 +139,16 @@ class Game {
     requestAnimationFrame((t) => this.frame(t));
   }
 
+  private makeWorld(pickupSeed: number): World {
+    return new World(this.save.worldSeed, pickupSeed, MAPS[this.save.map]);
+  }
+
   private newWorld(): void {
-    this.world = new World(this.save.worldSeed, this.save.worldSeed + this.save.day * 7919);
+    this.world = this.makeWorld(this.save.worldSeed + this.save.day * 7919);
   }
 
   private makeDemo(): Flight {
-    const world = new World(this.save.worldSeed, (Math.random() * 1e9) | 0);
+    const world = this.makeWorld((Math.random() * 1e9) | 0);
     this.world = world;
     return new Flight(world, DEMO_GEAR);
   }
@@ -160,7 +179,16 @@ class Game {
   }
 
   private gear(): Loadout {
-    return loadoutFor(this.save.equipped, this.save.sensors);
+    return loadoutFor(this.save.equipped, this.save.sensors, this.save.gadgets);
+  }
+
+  /** Cycle through unlocked maps. */
+  private switchMap(): void {
+    const list = MAP_ORDER.filter((m) => this.save.unlocked.includes(m));
+    this.save.map = list[(list.indexOf(this.save.map) + 1) % list.length];
+    this.persist();
+    this.renderer.bg.setSeed(this.save.worldSeed + MAPS[this.save.map].seedSalt);
+    this.toHangar(this.save.map === 'canyon' ? 'Ember Canyon. Bring sunscreen.' : 'Home sweet bamboo.');
   }
 
   private openShop(category: ShopCategory, says?: string): void {
@@ -173,7 +201,7 @@ class Game {
 
   private buy(category: ShopCategory, id: string): void {
     const item = findItem(category, id);
-    if (!item) return;
+    if (!item || !itemUnlocked(item, this.save.unlocked)) return;
     if (this.save.owned[category].includes(id)) return this.equip(category, id);
     if (this.save.money < item.cost) {
       this.sound.denied();
@@ -192,6 +220,13 @@ class Game {
       const { sensors, removed } = equipSensor(this.save.sensors, id);
       this.save.sensors = sensors;
       if (removed.length) says = `${says ? `${says} ` : ''}Swapped out the ${removed.map((r) => r.name).join(' and ')}.`;
+    } else if (category === 'gadget') {
+      if (!this.save.gadgets.includes(id)) {
+        const list = [...this.save.gadgets, id];
+        const removed = list.length > MAX_GADGETS ? list.shift() : undefined;
+        this.save.gadgets = list;
+        if (removed) says = `${says ? `${says} ` : ''}Took off the ${findItem('gadget', removed)?.name ?? 'old gadget'}.`;
+      }
     } else {
       this.save.equipped = { ...this.save.equipped, [category]: id };
     }
@@ -200,11 +235,12 @@ class Game {
     this.openShop(category, says ?? quip('equip'));
   }
 
-  private unequipSensor(id: string): void {
-    this.save.sensors = this.save.sensors.filter((s) => s !== id);
+  private unequip(category: ShopCategory, id: string): void {
+    if (category === 'sensor') this.save.sensors = this.save.sensors.filter((s) => s !== id);
+    if (category === 'gadget') this.save.gadgets = this.save.gadgets.filter((s) => s !== id);
     this.persist();
     this.refreshGear();
-    this.openShop('sensor', quip('unequip'));
+    this.openShop(category, quip('unequip'));
   }
 
   private launch(): void {
@@ -217,7 +253,7 @@ class Game {
     this.doneTimer = 0;
     this.lastImpact = 0;
     this.acc = 0;
-    this.biomeName = biomeAt(0).a.name;
+    this.biomeName = this.world.biomeAt(0).a.name;
     this.showFlightUi(true);
     this.hud.configure(this.flight);
     this.instruments.configure(this.flight);
@@ -239,7 +275,8 @@ class Game {
     this.instruments.show(on);
     const touch = this.input.touchSeen || matchMedia('(pointer: coarse)').matches;
     this.touch.hidden = !(on && touch);
-    $('#btn-boost').hidden = this.flight.gear.rocket.thrust <= 0;
+    $('#btn-boost').hidden = this.flight.gear.rocket.thrust <= 0 && !this.flight.gear.glider.flaps;
+    $('#btn-fire').hidden = this.flight.gear.weapon.rate <= 0;
     if (!on) this.prompt.hidden = true;
   }
 
@@ -260,31 +297,41 @@ class Game {
 
   private finishFlight(): void {
     const result = this.flight.result();
-    const earnings = computeEarnings(result, this.save.best);
+    const map = MAPS[this.save.map];
+    const prog = this.save.progress[this.save.map];
+    const earnings = computeEarnings(result, prog.best, map.pay);
     const day = this.save.day;
     const says = earnings.newRecords.includes('distance')
       ? resultQuip('record')
-      : result.distance < this.save.best.distance * 0.5
+      : result.distance < prog.best.distance * 0.5
         ? resultQuip('short')
         : resultQuip('meh');
     this.save.money += earnings.total;
     this.save.totalEarned += earnings.total;
-    this.save.best = updateRecords(this.save.best, result);
-    if (result.reachedGoal && !this.save.goalReached) {
-      this.save.goalReached = true;
-      this.save.goalDay = day;
+    prog.best = updateRecords(prog.best, result);
+    if (result.reachedGoal && !prog.goalReached) {
+      prog.goalReached = true;
+      prog.goalDay = day;
       this.pendingVictory = true;
+      this.victoryMap = map.id;
+      // Reaching a goal unlocks the next map.
+      const next = MAP_ORDER[MAP_ORDER.indexOf(map.id) + 1];
+      this.newlyUnlocked = null;
+      if (next && !this.save.unlocked.includes(next)) {
+        this.save.unlocked = [...this.save.unlocked, next];
+        this.newlyUnlocked = MAPS[next].name;
+      }
     }
     this.save.day += 1;
     this.persist();
     this.mode = 'results';
     this.showFlightUi(false);
-    this.screens.showResults(day, earnings, says, () => this.sound.cash());
+    this.screens.showResults(day, map.name, earnings, says, () => this.sound.cash());
   }
 
   private flightInput(): FlightInput {
     if (this.mode === 'title' || this.autopilot) return autopilot(this.flight);
-    return { pitch: this.input.pitch, boost: this.input.isDown('boost') };
+    return { pitch: this.input.pitch, boost: this.input.isDown('boost'), fire: this.input.isDown('fire') };
   }
 
   private mood(): Mood {
@@ -326,6 +373,10 @@ class Game {
       if (f.phase === 'ready' && (this.input.wasPressed('confirm') || this.input.wasPressed('boost'))) this.startSlide();
     }
     if (this.mode === 'title' && f.phase === 'ready' && this.time > 1) f.start();
+    if (this.mode === 'hangar' && this.input.wasPressed('confirm') && this.screens.inHangar()) {
+      this.launch();
+      return;
+    }
 
     const simulate = this.mode === 'flight' || this.mode === 'title';
     if (simulate) {
@@ -342,10 +393,9 @@ class Game {
     }
 
     if (this.mode === 'flight') {
-      this.hud.update(f, this.save.best.distance);
+      this.hud.update(f, this.save.progress[this.save.map].best.distance);
       this.stallHorn(dt);
-      const b = biomeAt(f.x);
-      const name = b.t > 0.5 ? b.b.name : b.a.name;
+      const name = mainBiome(this.world.biomeAt(f.x)).name;
       if (name !== this.biomeName) {
         this.biomeName = name;
         this.hud.showToast(name);
@@ -431,6 +481,21 @@ class Game {
         case 'done':
           this.say(quip('done'), true);
           break;
+        case 'lava':
+          this.say(quip('lava'));
+          break;
+        case 'hurt':
+          this.say(quip('hit'));
+          break;
+        case 'shielded':
+          this.say(quip('shield'));
+          break;
+        case 'enemyDown':
+          if (Math.random() < 0.4) this.say(quip('kill'));
+          break;
+        case 'thermal':
+          if (Math.random() < 0.3) this.say(quip('thermal'));
+          break;
         default:
           break;
       }
@@ -461,9 +526,31 @@ class Game {
         case 'flap':
           this.sound.flap();
           break;
-        case 'goal':
+        case 'goal': {
           this.sound.fanfare();
-          this.hud.showToast('🎋 You reached Panda Paradise! 🎋', 4000);
+          const map = this.world.map;
+          const icon = map.id === 'canyon' ? '🏯' : '🎋';
+          this.hud.showToast(`${icon} You reached ${map.goalName}! ${icon}`, 4000);
+          break;
+        }
+        case 'shoot':
+          this.sound.shoot(ev.tag ?? 'peas');
+          break;
+        case 'enemyHit':
+          if (ev.tag === 'blast') this.sound.boom();
+          else this.sound.hit();
+          break;
+        case 'enemyDown':
+          this.sound.enemyDown();
+          break;
+        case 'hurt':
+          this.sound.hurt();
+          break;
+        case 'shielded':
+          this.sound.pop();
+          break;
+        case 'lava':
+          this.sound.sizzle();
           break;
         case 'done':
           break;

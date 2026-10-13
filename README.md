@@ -6,6 +6,32 @@ kicker at the bottom, glides and rockets as far as possible, earns cash for
 every flight and spends it on gear — day after day — until it reaches
 **Panda Paradise**, 7,000 m beyond the mountains.
 
+Reaching Panda Paradise unlocks a second map, **Ember Canyon**: sunset
+mesas, a smoking volcano, lava pools and hostile skies, with the **Golden
+Pagoda** 11,000 m away. It pays 1.6× and opens two new shops (Weapons and
+Gadgets) plus top-tier gear. Switch maps with the 🗺️ button in the hangar;
+each map keeps its own records and goal.
+
+## Ember Canyon
+
+- **Enemies**: crows dive at you, bats zigzag in fast, and red-panda bandits
+  hover in hot-air balloons lobbing pinecones. Getting hit slows you down and
+  knocks coins loose. Each one you shoot down pays a bounty.
+- **Thermals**: shimmering columns of hot air over the canyon floor lift you
+  (more so in the Lava Fields). Some gliders ride them better.
+- **Lava**: pools in the dips. Touching one bounces you back up with a
+  scorched tail instead of landing you.
+- **Weapons** (fire where your nose points): Pea Shooter, Pinecone Slingshot
+  (arcing, piercing), Firecracker Launcher (explodes), Bee Hive (homing
+  bees), Snowball Gatling (fast) and Laser Monocle (instant beam). Each has
+  damage, fire rate, ammo and weight.
+- **Gadgets** (equip two): Coin Magnet, Lucky Bamboo (coins worth more), Ammo Belt
+  (double ammo), Threat Radar (arrows to off-screen enemies), Bubble Shield
+  (absorbs hits), Spiky Helmet (ram enemies) and Heat Suit (better lava
+  bounces and thermals).
+- **Canyon-only gear** (locked until the map unlocks): Volcano Ramp,
+  Obsidian Board, Phoenix Wings, Magma Thruster and Lava Cell fuel.
+
 ## Building your flying machine
 
 The hangar has a shop for each kind of gear: ramps, sleds, gliders, rockets
@@ -20,6 +46,7 @@ compared to what you have equipped.
   (how fast you can tilt), and weight.
 - **Rockets**: thrust, how fast they burn fuel, and weight.
 - **Fuel tanks**: capacity and weight.
+- **Weapons** and **Gadgets**: see Ember Canyon above.
 
 - **Sensors**: cockpit instruments on a panel at the bottom of the screen —
   airspeed indicator, vertical speed indicator, altimeter, radar altimeter
@@ -52,10 +79,12 @@ npm run dev        # http://localhost:5173
 ```
 
 Controls (PC): `↑`/`↓` or `W`/`S` (also `←`/`→`, `A`/`D`) tilt the nose,
-`Space` starts the slide and fires the rocket, `Esc`/`P` pauses. After a
+`Space` starts the slide and fires the rocket, `F`/`J`/`K`/`Ctrl` shoots,
+`Esc`/`P` pauses. `Space`/`Enter` in the hangar launches. After a
 flight, `Space`/`Enter` (or a tap) skips the landing pause and the flight-log
 animations, then continues.
-On touch screens, on-screen ▲ ▼ and BOOST buttons appear automatically.
+On touch screens, on-screen ▲ ▼, BOOST and (with a weapon) FIRE buttons
+appear automatically.
 
 Add `?autopilot` to the URL to let the computer fly (useful for testing).
 
@@ -68,11 +97,15 @@ Nothing is a bitmap or audio file — everything is generated at runtime:
 
 - **Terrain**: seeded fractal noise; hills grow taller with distance. The
   landscape is fixed per save, pickups reshuffle every day.
+- **Maps**: each map is a data description (`src/game/maps.ts`): biomes,
+  terrain style, sky colours and payout. Ember Canyon uses terraced mesas.
 - **Biomes**: Snowy Peaks → Pine Valley → Flower Meadows → Bamboo Forest →
-  Panda Paradise, blended by distance (ground, decorations, sky tint).
+  Panda Paradise, and Ash Slopes → Red Canyon → Lava Fields → Crystal Ridge →
+  Golden Pagoda, blended by distance (ground, decorations, sky tint).
+- **Enemies and thermals**: spawned from the biome's settings and a seeded RNG.
 - **Trees**: grown from seeds — layered conifers (snowy or not), recursively
   branching oaks, birches and cherry blossoms, bare winter trees, bamboo groves
-  and bushes. Each is rendered once into a cached sprite sized to its exact
+  and bushes; in the canyon, cacti, palms, shrubs and charred trunks. Each is rendered once into a cached sprite sized to its exact
   bounds, and sways in the wind. Trees appear in groves and clearings, with a
   back row half-hidden behind the ridge for depth.
 - **Ground**: wavy rock strata, embedded pebbles, grass tufts, snow glitter,
@@ -82,24 +115,28 @@ Nothing is a bitmap or audio file — everything is generated at runtime:
 - **Scenery**: parallax mountain ranges with snow caps, clouds, and stars at
   high altitude.
 - **Pickups**: coin trails, big coins, boost rings and balloons, generated per
-  60 m chunk.
+  60 m chunk. Collection is swept along the panda's path with a generous
+  reach, so fast flights don't skip through coins or rings.
 - **Ramps**: laid along the mountain profile, ending in a kicker curve
   (a Hermite spline tangent to the hillside) that sets the launch angle.
 - **Panda & gear**: drawn from canvas primitives (8 sleds, 8 gliders,
   7 rockets) with moods (happy, excited, scared, dizzy, sleepy) and running
   commentary in speech bubbles.
-- **Sound**: WebAudio synthesis (wind, rocket, coins, impacts, fanfare).
+- **Rocket flame**: additive glow, flickering flame tongues, shock diamonds at
+  full power, embers and billowing smoke; each rocket has its own palette.
+- **Sound**: WebAudio synthesis (wind, rocket, coins, impacts, weapons,
+  fanfare).
 
 ## Code layout
 
 ```
 src/
   core/      engine-agnostic helpers: math, seeded RNG/noise, input, audio, storage
-  game/      pure simulation (no DOM): flight physics, world gen, upgrades, economy, save
-  render/    canvas rendering: camera, background, terrain, panda, pickups, particles
+  game/      pure simulation (no DOM): flight physics, maps, world gen, combat, upgrades, economy, save
+  render/    canvas rendering: camera, background, terrain, panda, enemies, pickups, particles
   ui/        DOM overlays: HUD, title, hangar, shops, results, pause, quips
   main.ts    game state machine and fixed-timestep loop (120 Hz)
-tests/       vitest: world/RNG, economy, and a balance test that flies every tier
+tests/       vitest: world/RNG, economy, combat, and a balance test that flies every tier
 ```
 
 Balancing lives in `src/game/upgrades.ts` (the item catalogue — gliders are

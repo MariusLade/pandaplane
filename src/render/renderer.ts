@@ -1,11 +1,12 @@
 import { clamp, lerp, mixRgb, rgb, wrapAngle } from '../core/math';
 import { PANDA_RADIUS } from '../game/constants';
 import type { Flight, FlightEvent } from '../game/flight';
-import { biomeAt, type Pickup, type World } from '../game/world';
+import type { Pickup, World } from '../game/world';
 import { Background } from './background';
 import { Camera } from './camera';
 import { drawPanda, nozzleOffset, type Mood } from './panda';
 import { Particles } from './particles';
+import { drawBeam, drawEnemies, drawShots, drawThermals, drawThreatArrows } from './combat';
 import { drawPickups } from './pickups';
 import { drawDecor, drawRamp, drawSigns, drawTerrain } from './terrain';
 
@@ -55,10 +56,16 @@ export class Renderer {
     this.cam.resize(rect.width, rect.height);
   }
 
-  /** The panda never shrinks below a readable size, relative to the screen. */
+  /**
+   * Pixels per metre for the panda (and enemies). Close up it is true scale;
+   * as the camera zooms out it shrinks too, more gently than the world, and
+   * stops at a floor tied to the screen size so it never turns into a speck.
+   */
   pandaScale(): number {
-    const min = clamp(Math.min(this.cam.w, this.cam.h) * 0.048, 16, 40);
-    return Math.max(this.cam.ppm, min);
+    const ppm = this.cam.ppm;
+    const ref = clamp(Math.min(this.cam.w, this.cam.h) * 0.04, 14, 32);
+    const exaggeration = clamp(Math.sqrt(ref / ppm), 1, 4.5);
+    return Math.max(ppm * exaggeration, ref * 0.6);
   }
 
   /** Blend the last two physics states; call once per frame before drawing. */
@@ -100,7 +107,7 @@ export class Renderer {
     const lead = clamp(vx * 0.35, -span * 0.2, span * 0.22);
     const tx = this.view.x + lead;
     // Drop the camera towards the ground so the landing zone stays in view while low.
-    const drop = Math.min(agl * 0.6, viewH * 0.3);
+    const drop = Math.min(agl * 0.6, viewH * 0.15);
     const ty = this.view.y - drop + clamp(vy * 0.2, -span * 0.12, span * 0.12);
     cam.follow(tx, ty, span, Math.min(world.groundY(this.view.x), world.groundY(tx)), dt, snap);
   }
@@ -126,7 +133,7 @@ export class Renderer {
         p.burst(ev.x, ev.y, 10, 'confetti', '#ffd23d', 8, 0.12, 1);
         break;
       case 'impact': {
-        const b = biomeAt(ev.x);
+        const b = flight.world.biomeAt(ev.x);
         const color = rgb(mixRgb(b.a.lip, b.b.lip, b.t));
         p.burst(ev.x, flight.world.groundY(ev.x) + 0.2, Math.min(40, 6 + ev.amount), 'puff', color, 3 + ev.amount * 0.2, 0.5, 1);
         this.cam.addShake(clamp(ev.amount / 30, 0.1, 0.9));
@@ -157,6 +164,41 @@ export class Renderer {
         this.cam.addShake(Math.min(0.5, ev.amount / 40));
         break;
       }
+      case 'shoot':
+        if (ev.tag !== 'laser') p.burst(ev.x, ev.y, 3, 'ember', '#fff3b0', 6, 0.08, 0.15);
+        break;
+      case 'enemyHit':
+        if (ev.tag === 'blast') {
+          p.burst(ev.x, ev.y, 26, 'flame', 'fire', ev.amount * 1.2, 0.5, 0.5);
+          p.burst(ev.x, ev.y, 14, 'ember', '#ffd27a', 14, 0.1, 0.6);
+          p.spawn({ kind: 'ring', x: ev.x, y: ev.y, vx: 0, vy: 0, life: 0.35, size: ev.amount, color: '#fff3b0', gravity: 0, drag: 0 });
+          this.cam.addShake(0.25);
+        } else {
+          p.burst(ev.x, ev.y, 6, 'spark', '#fff3b0', 8, 0.1, 0.3);
+        }
+        break;
+      case 'enemyDown': {
+        const color = ev.tag === 'bandit' ? '#c4532a' : ev.tag === 'bat' ? '#7a2a22' : '#1f1d24';
+        p.burst(ev.x, ev.y, 14, 'confetti', color, 9, 0.18, 1.2);
+        p.burst(ev.x, ev.y, 10, 'puff', '#ffffff', 5, 0.5, 0.6);
+        p.text(ev.x, ev.y + 2, `+$${ev.amount}`, '#ffe066');
+        if (ev.tag === 'bandit') p.burst(ev.x, ev.y - 2, 20, 'confetti', '#ffd23d', 12, 0.2, 1.4);
+        break;
+      }
+      case 'hurt':
+        p.burst(ev.x, ev.y, 12, 'confetti', '#1f1d24', 8, 0.15, 1);
+        if (ev.amount > 0) p.text(flight.x, flight.y + 2, `-$${ev.amount}`, '#ff6b6b');
+        this.cam.addShake(0.5);
+        break;
+      case 'shielded':
+        p.spawn({ kind: 'ring', x: flight.x, y: flight.y, vx: 0, vy: 0, life: 0.5, size: 2.5, color: '#9fe3ff', gravity: 0, drag: 0 });
+        p.burst(ev.x, ev.y, 10, 'spark', '#9fe3ff', 8, 0.12, 0.5);
+        break;
+      case 'lava':
+        p.burst(ev.x, flight.world.groundY(ev.x), 24, 'flame', 'fire', 9, 0.5, 0.6);
+        p.burst(ev.x, flight.world.groundY(ev.x), 18, 'ember', '#ffb238', 14, 0.12, 0.9);
+        this.cam.addShake(0.35);
+        break;
       case 'goal':
         for (const c of ['#ff5d6c', '#ffd23d', '#5dc4ff', '#5fd47a', '#ffffff'])
           p.burst(ev.x, ev.y, 30, 'confetti', c, 18, 0.25, 2.5);
@@ -181,38 +223,61 @@ export class Renderer {
       const ny = this.view.y + lift(scale, this.cam.ppm) + lx * s + ly * c;
       const vx = flight.phase === 'air' ? flight.vx : 0;
       const vy = flight.phase === 'air' ? flight.vy : 0;
-      const ion = flight.gear.rocket.style === 'ion';
-      for (let i = 0; i < 3; i++) {
+      const style = flight.gear.rocket.style;
+      const ion = style === 'ion';
+      const steamy = style === 'soda' || style === 'cola' || style === 'kettle';
+      const power = clamp(flight.thrust / 30, 0.2, 1.2);
+      const size = Math.min(scale, 3.5);
+      // Hot exhaust gas streaming out of the nozzle.
+      const n = steamy ? 0 : 2 + Math.round(power * 3);
+      for (let i = 0; i < n; i++) {
+        const sp = 10 + power * 18 + Math.random() * 6;
         p.spawn({
           kind: 'flame',
           x: nx,
           y: ny,
-          vx: vx * 0.6 - c * 12 + (Math.random() - 0.5) * 3,
-          vy: vy * 0.6 - s * 12 + (Math.random() - 0.5) * 3,
-          life: 0.25,
-          size: 0.35 * Math.min(scale, 4),
-          color: ion ? '#7fd8ff' : '#ffb238',
+          vx: vx * 0.7 - c * sp + (Math.random() - 0.5) * 3,
+          vy: vy * 0.7 - s * sp + (Math.random() - 0.5) * 3,
+          life: 0.18 + power * 0.12,
+          size: (0.28 + power * 0.2) * size,
+          color: ion ? 'ion' : 'fire',
           gravity: 0,
-          drag: 2,
+          drag: 3,
         });
       }
-      if (!ion && Math.random() < dt * 40) {
+      // Sparks flung out of the exhaust.
+      if (!steamy && !ion && Math.random() < dt * (12 + power * 25)) {
+        p.spawn({
+          kind: 'ember',
+          x: nx,
+          y: ny,
+          vx: vx * 0.5 - c * 14 + (Math.random() - 0.5) * 14,
+          vy: vy * 0.5 - s * 14 + (Math.random() - 0.5) * 14,
+          life: 0.4 + Math.random() * 0.4,
+          size: 0.06 * size,
+          color: Math.random() < 0.5 ? '#ffd27a' : '#ff8a3d',
+          gravity: 6,
+          drag: 1,
+        });
+      }
+      // Billowing smoke (or steam and fizz).
+      if (!ion && Math.random() < dt * (steamy ? 60 : 45)) {
         p.spawn({
           kind: 'smoke',
           x: nx,
           y: ny,
-          vx: vx * 0.2 - c * 4,
-          vy: vy * 0.2 - s * 4,
-          life: 1.4,
-          size: 0.8 * Math.min(scale, 4),
-          color: '#d8dde6',
-          gravity: -1,
+          vx: vx * 0.15 - c * (steamy ? 8 : 4) + (Math.random() - 0.5) * 2,
+          vy: vy * 0.15 - s * (steamy ? 8 : 4) + (Math.random() - 0.5) * 2,
+          life: steamy ? 0.8 : 1.6,
+          size: (steamy ? 0.5 : 0.7 + power * 0.4) * size,
+          color: steamy ? '#ffffff' : style === 'magma' ? '#7a6a6e' : '#d8dde6',
+          gravity: -1.5,
           drag: 1.5,
         });
       }
     }
     if (flight.phase === 'air' && flight.onGround && flight.speed > 3 && Math.random() < dt * 30) {
-      const b = biomeAt(flight.x);
+      const b = flight.world.biomeAt(flight.x);
       p.spawn({
         kind: 'puff',
         x: flight.x - 0.5,
@@ -275,8 +340,8 @@ export class Renderer {
     this.updateStreaks(flight, dt);
 
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    this.bg.draw(ctx, cam, time);
-    this.bg.drawNearClouds(ctx, cam);
+    this.bg.draw(ctx, cam, time, world);
+    this.bg.drawNearClouds(ctx, cam, world);
     drawDecor(ctx, cam, world, time, this.dpr, 'back');
     drawTerrain(ctx, cam, world, time);
     drawDecor(ctx, cam, world, time, this.dpr, 'front');
@@ -285,11 +350,13 @@ export class Renderer {
 
     this.pickBuf.length = 0;
     world.pickupsIn(cam.wx(-50), cam.wx(cam.w + 50), this.pickBuf);
+    drawThermals(ctx, cam, world, time);
     drawPickups(ctx, cam, this.pickBuf, time, Math.max(cam.ppm, PICKUP_MIN_PPM));
 
-    this.particles.draw(ctx, cam, cam.ppm);
-
     const scale = this.pandaScale();
+    drawEnemies(ctx, cam, flight.enemies, scale, time);
+    drawShots(ctx, cam, flight.shots, scale, time);
+    this.particles.draw(ctx, cam, cam.ppm);
     // When drawn larger than life, lift the panda so it still rests on the ground.
     const sx = cam.sx(this.view.x);
     const sy = cam.sy(this.view.y + lift(scale, cam.ppm));
@@ -302,10 +369,33 @@ export class Renderer {
       mood: gearMood,
       wind: clamp(speed / 25, 0, 1),
       flap: Math.max(0, 1 - this.sinceFlap * 3),
+      thrust: clamp(flight.thrust / 30, 0.15, 1.2),
     });
+    if (flight.shield > 0 && flight.phase !== 'done') this.drawShield(sx, sy, scale, time, flight.shield);
+    drawBeam(ctx, cam, flight);
 
     this.drawStreaks(flight);
+    if (flight.gear.gadgets.some((g) => g.threatRadar) && flight.phase === 'air') drawThreatArrows(ctx, cam, flight.enemies, time);
     this.drawSpeech(sx, sy - scale * 1.4, dt);
+  }
+
+  /** A wobbly soap bubble around the panda while the shield holds. */
+  private drawShield(x: number, y: number, scale: number, time: number, charges: number): void {
+    const ctx = this.ctx;
+    const r = scale * 1.3 * (1 + Math.sin(time * 5) * 0.03);
+    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+    g.addColorStop(0, 'rgba(255,255,255,0.05)');
+    g.addColorStop(0.8, 'rgba(160,220,255,0.12)');
+    g.addColorStop(1, `rgba(160,220,255,${0.25 + charges * 0.1})`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.85, Math.PI * 1.1, Math.PI * 1.4);
+    ctx.stroke();
   }
 
   private drawSpeech(x: number, y: number, dt: number): void {

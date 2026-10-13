@@ -23,6 +23,9 @@
           <div class="hud-chip big"><i>📏</i><span><small>Distance</small><b id="hud-dist">0 m</b></span></div>
           <div class="hud-chip"><i>🪙</i><span><small>Coins</small><b id="hud-coins">$0</b></span></div>
           <div class="hud-chip" id="hud-flaps-chip"><i>🪶</i><span><small>Flaps</small><b id="hud-flaps">0</b></span></div>
+          <div class="hud-chip" id="hud-ammo-chip"><i>🎯</i><span><small>Ammo</small><b id="hud-ammo">0</b></span></div>
+          <div class="hud-chip" id="hud-shield-chip"><i>🫧</i><span><small>Shield</small><b id="hud-shield">0</b></span></div>
+          <div class="hud-chip" id="hud-kills-chip"><i>💥</i><span><small>Defeated</small><b id="hud-kills">0</b></span></div>
         </div>
         <div class="hud-progress" aria-hidden="true">
           <div id="hud-progress-fill"></div>
@@ -41,7 +44,10 @@
           <button id="btn-up" aria-label="Nose up">▲</button>
           <button id="btn-down" aria-label="Nose down">▼</button>
         </div>
-        <button id="btn-boost" aria-label="Boost">BOOST</button>
+        <div class="pad-right">
+          <button id="btn-fire" aria-label="Fire">FIRE</button>
+          <button id="btn-boost" aria-label="Boost">BOOST</button>
+        </div>
       </div>
 
       <div id="screen" hidden></div>

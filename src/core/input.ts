@@ -3,7 +3,7 @@
  * on-screen touch buttons both feed into the same action state, so adding
  * gamepad or tilt controls later means adding another source here.
  */
-export type Action = 'up' | 'down' | 'boost' | 'confirm' | 'pause';
+export type Action = 'up' | 'down' | 'boost' | 'fire' | 'confirm' | 'pause';
 
 const KEYMAP: Record<string, Action[]> = {
   ArrowUp: ['up'],
@@ -18,6 +18,11 @@ const KEYMAP: Record<string, Action[]> = {
   ShiftLeft: ['boost'],
   ShiftRight: ['boost'],
   KeyX: ['boost'],
+  KeyF: ['fire'],
+  KeyJ: ['fire'],
+  KeyK: ['fire'],
+  ControlLeft: ['fire'],
+  ControlRight: ['fire'],
   Enter: ['confirm'],
   NumpadEnter: ['confirm'],
   Escape: ['pause'],

@@ -7,10 +7,15 @@
  * one place.
  */
 import { BODY_DRAG, PANDA_MASS } from './constants';
+import type { MapId } from './maps';
 
-export type Category = 'ramp' | 'sled' | 'glider' | 'rocket' | 'fuel';
+/** Gear slots that hold exactly one item each. */
+export type Category = 'ramp' | 'sled' | 'glider' | 'rocket' | 'fuel' | 'weapon';
 
-export const CATEGORIES: Category[] = ['ramp', 'sled', 'glider', 'rocket', 'fuel'];
+export const CATEGORIES: Category[] = ['ramp', 'sled', 'glider', 'rocket', 'fuel', 'weapon'];
+
+/** How many gadgets can be worn at once. */
+export const MAX_GADGETS = 2;
 
 export interface ItemBase {
   id: string;
@@ -21,6 +26,8 @@ export interface ItemBase {
   weight: number;
   /** A special ability, shown as a badge in the shop. */
   perk?: string;
+  /** Only sold once this map is unlocked. */
+  unlock?: MapId;
 }
 
 export interface RampItem extends ItemBase {
@@ -46,7 +53,8 @@ export type SledStyle =
   | 'iron'
   | 'surfboard'
   | 'bobsled'
-  | 'hover';
+  | 'hover'
+  | 'obsidian';
 
 export interface SledItem extends ItemBase {
   /** Friction coefficient on the ramp; also softens landings. */
@@ -74,7 +82,8 @@ export type GliderStyle =
   | 'carbon'
   | 'feathers'
   | 'albatross'
-  | 'dragon';
+  | 'dragon'
+  | 'phoenix';
 
 export interface GliderItem extends ItemBase {
   /** Lift coefficient scale (multiplies CL * v^2). 0 = no wings. */
@@ -97,6 +106,8 @@ export interface GliderItem extends ItemBase {
   rotor?: number;
   /** Keeps its lift past the stall angle instead of dropping out. */
   noStall?: boolean;
+  /** Multiplier on how strongly thermals lift it. */
+  thermal?: number;
   color: string;
   style: GliderStyle;
   /** Design numbers, kept for the shop's stat bars. */
@@ -114,7 +125,8 @@ export type RocketStyle =
   | 'ion'
   | 'turbo'
   | 'afterburner'
-  | 'space';
+  | 'space'
+  | 'magma';
 
 export interface RocketItem extends ItemBase {
   /** Thrust as acceleration for a reference-weight panda, m/s^2. 0 = no rocket. */
@@ -129,7 +141,7 @@ export interface RocketItem extends ItemBase {
   style: RocketStyle;
 }
 
-export type FuelStyle = 'tank' | 'solar' | 'nitro';
+export type FuelStyle = 'tank' | 'solar' | 'nitro' | 'lava';
 
 export interface FuelItem extends ItemBase {
   /** Seconds of burn at a burn rate of 1. */
@@ -166,7 +178,54 @@ export interface SensorItem extends ItemBase {
   style: SensorStyle;
 }
 
-export type Item = RampItem | SledItem | GliderItem | RocketItem | FuelItem | SensorItem;
+export type WeaponStyle = 'none' | 'peas' | 'sling' | 'crackers' | 'bees' | 'snow' | 'laser';
+
+export interface WeaponItem extends ItemBase {
+  /** Damage per hit (crows have 1 HP, bats 2, bandits 4). */
+  damage: number;
+  /** Shots per second while FIRE is held. */
+  rate: number;
+  ammo: number;
+  /** Muzzle speed, m/s, on top of the panda's own speed. */
+  speed: number;
+  /** Random aim wobble, radians. */
+  spread: number;
+  /** Shots arc under gravity. */
+  gravity?: boolean;
+  /** Shots steer towards the nearest enemy. */
+  homing?: boolean;
+  /** Explodes on hit, damaging everything within this radius (m). */
+  blast?: number;
+  /** Instant beam up to this range (m). */
+  hitscan?: number;
+  /** Enemies a shot can pass through. */
+  pierce?: number;
+  color: string;
+  style: WeaponStyle;
+}
+
+export type GadgetStyle = 'magnet' | 'charm' | 'belt' | 'radar' | 'shield' | 'helmet' | 'suit';
+
+export interface GadgetItem extends ItemBase {
+  /** Pulls coins in from this far away (m). */
+  magnet?: number;
+  /** Multiplier on coin value. */
+  coinMul?: number;
+  /** Multiplier on weapon ammo. */
+  ammoMul?: number;
+  /** Hits absorbed per flight. */
+  shield?: number;
+  /** Ramming enemies destroys them without slowing you. */
+  spikes?: boolean;
+  /** Lava launches you instead of scorching you; thermals lift harder. */
+  heatSuit?: boolean;
+  /** Arrows on screen point at incoming enemies. */
+  threatRadar?: boolean;
+  color: string;
+  style: GadgetStyle;
+}
+
+export type Item = RampItem | SledItem | GliderItem | RocketItem | FuelItem | SensorItem | WeaponItem | GadgetItem;
 
 export const RAMPS: RampItem[] = [
   { id: 'bump', name: 'Snow Bump', cost: 0, weight: 0, height: 20, launchDeg: 20, blurb: 'A lump of snow with ambition.' },
@@ -180,6 +239,7 @@ export const RAMPS: RampItem[] = [
   { id: 'mega', name: 'Mega Ramp', cost: 2600, weight: 0, height: 72, launchDeg: 22, blurb: 'You can see your house from here.' },
   { id: 'springboard', name: 'Spring Board', cost: 3600, weight: 0, height: 62, launchDeg: 30, kick: 9, style: 'spring', perk: 'Spring: +32 km/h at the lip', blurb: 'A mega ramp with a trampoline at the end.' },
   { id: 'mountain', name: 'Mountain Ramp', cost: 5200, weight: 0, height: 96, launchDeg: 25, blurb: 'Starts near the summit. Bring a scarf.' },
+  { id: 'volcano', name: 'Volcano Ramp', cost: 9000, weight: 0, height: 125, launchDeg: 24, unlock: 'canyon', perk: 'Starts right at the crater rim', blurb: 'Built from cooled lava. Mostly cooled.' },
 ];
 
 export const SLEDS: SledItem[] = [
@@ -194,6 +254,7 @@ export const SLEDS: SledItem[] = [
   { id: 'surfboard', name: 'Snow Surfboard', cost: 1650, weight: 7, friction: 0.055, drag: 0.82, groundGlide: 0.2, color: '#20a4f3', style: 'surfboard', perk: 'Surfs the ground after landing', blurb: 'Catch a wave. Of snow.' },
   { id: 'bobsled', name: 'Bobsled', cost: 2000, weight: 22, friction: 0.035, drag: 0.62, color: '#f2b705', style: 'bobsled', blurb: 'Aerodynamic panda pod.' },
   { id: 'hover', name: 'Hover Sled', cost: 4600, weight: 8, friction: 0.012, drag: 0.55, color: '#20c5b5', style: 'hover', blurb: 'Nobody knows how it works.' },
+  { id: 'obsidian', name: 'Obsidian Board', cost: 8000, weight: 10, friction: 0.008, drag: 0.5, groundGlide: 0.4, color: '#2a2233', style: 'obsidian', unlock: 'canyon', perk: 'Glassy: skims after landing', blurb: 'Polished volcanic glass. Unbelievably slick.' },
 ];
 
 /** Reference body-drag multiplier used when deriving glider coefficients. */
@@ -220,6 +281,8 @@ interface GliderDesign {
   flaps?: number;
   rotor?: number;
   noStall?: boolean;
+  thermal?: number;
+  unlock?: MapId;
   perk?: string;
 }
 
@@ -248,6 +311,8 @@ function glider(d: GliderDesign): GliderItem {
     style: d.style,
     design: { minSpeed: d.minSpeed, glideRatio: d.glideRatio },
     flaps: d.flaps,
+    thermal: d.thermal,
+    unlock: d.unlock,
     rotor: d.rotor,
     noStall: d.noStall,
     perk: d.perk,
@@ -286,6 +351,7 @@ export const GLIDERS: GliderItem[] = [
   glider({ id: 'feathers', name: 'Feathered Wings', cost: 3800, weight: 7, minSpeed: 20, glideRatio: 6.5, cruiseCl: 0.6, stallDeg: 17, control: 1.35, tuck: 0.25, span: 3.8, flaps: 6, color: '#a0703c', style: 'feathers', perk: '6 flaps: press BOOST to flap', blurb: 'Real flapping! Once the rocket is empty, BOOST beats your wings.' }),
   glider({ id: 'albatross', name: 'Albatross Wings', cost: 6200, weight: 18, minSpeed: 21, glideRatio: 9.5, cruiseCl: 0.5, stallDeg: 18, control: 0.75, tuck: 0.12, span: 5.0, color: '#ffffff', style: 'albatross', blurb: 'Glides forever. Turns like a cruise ship.' }),
   glider({ id: 'dragon', name: 'Dragon Wings', cost: 9500, weight: 22, minSpeed: 20, glideRatio: 10.5, cruiseCl: 0.5, stallDeg: 19, control: 0.95, tuck: 0.12, span: 5.2, flaps: 3, color: '#2e9e6b', style: 'dragon', perk: '3 mighty flaps', blurb: 'Ancient, enormous and a little bit smug.' }),
+  glider({ id: 'phoenix', name: 'Phoenix Wings', cost: 14000, weight: 16, minSpeed: 19, glideRatio: 12, cruiseCl: 0.5, stallDeg: 19, control: 1.15, tuck: 0.1, span: 5.4, flaps: 2, thermal: 2, unlock: 'canyon', color: '#ff7a3d', style: 'phoenix', perk: 'Double thermal lift · 2 flaps', blurb: 'Reborn from the volcano. Loves hot air.' }),
 ];
 
 export const ROCKETS: RocketItem[] = [
@@ -300,6 +366,7 @@ export const ROCKETS: RocketItem[] = [
   { id: 'turbo', name: 'Turbo Rocket', cost: 3600, weight: 10, thrust: 17, burn: 1, color: '#2f7de1', style: 'turbo', blurb: 'Loud enough to wake hibernators.' },
   { id: 'afterburner', name: 'Afterburner', cost: 5600, weight: 14, thrust: 15, burn: 1, spool: 3, color: '#6b7280', style: 'afterburner', perk: 'Spools up to 2× thrust', blurb: 'Starts sluggish, ends furious. Keep it lit!' },
   { id: 'space', name: 'Space Rocket', cost: 8200, weight: 24, thrust: 24, burn: 0.9, color: '#f2b705', style: 'space', blurb: 'Rated for orbit, almost.' },
+  { id: 'magma', name: 'Magma Thruster', cost: 13000, weight: 26, thrust: 30, burn: 0.85, color: '#ff5a2a', style: 'magma', unlock: 'canyon', perk: 'The strongest push there is', blurb: 'Bottled volcano. Handle with oven mitts.' },
 ];
 
 export const FUELS: FuelItem[] = [
@@ -312,6 +379,7 @@ export const FUELS: FuelItem[] = [
   { id: 'tanker', name: 'Tanker', cost: 2300, weight: 30, seconds: 9.5, blurb: 'Where does the panda even keep this?' },
   { id: 'nitro', name: 'Nitro Canister', cost: 2900, weight: 4, seconds: 3, thrustMul: 1.6, style: 'nitro', perk: '+60% rocket thrust', blurb: 'Small, angry and extremely fast.' },
   { id: 'reactor', name: 'Reactor', cost: 5400, weight: 8, seconds: 12, blurb: 'Bamboo-powered fusion.' },
+  { id: 'lavacell', name: 'Lava Cell', cost: 9500, weight: 6, seconds: 14, regen: 0.2, style: 'lava', unlock: 'canyon', perk: 'Huge, and recharges twice', blurb: 'A glowing core of molten bamboo.' },
 ];
 
 export const SENSORS: SensorItem[] = [
@@ -362,6 +430,26 @@ export function equipSensor(current: string[], id: string): { sensors: string[];
   return { sensors: [...current.filter((c) => !clash.has(c) && c !== id), id], removed };
 }
 
+export const WEAPONS: WeaponItem[] = [
+  { id: 'none', name: 'Bare Paws', cost: 0, weight: 0, damage: 0, rate: 0, ammo: 0, speed: 0, spread: 0, color: '#000', style: 'none', blurb: 'Pandas are lovers, not fighters.' },
+  { id: 'peas', name: 'Pea Shooter', cost: 300, weight: 1.5, damage: 1, rate: 4, ammo: 40, speed: 70, spread: 0.03, color: '#6dbb4b', style: 'peas', unlock: 'canyon', blurb: 'A bamboo tube and a lot of peas.' },
+  { id: 'sling', name: 'Pinecone Slingshot', cost: 650, weight: 1, damage: 3, rate: 1.4, ammo: 20, speed: 58, spread: 0.02, gravity: true, pierce: 1, color: '#8a5a32', style: 'sling', unlock: 'canyon', perk: 'Heavy hits that pierce', blurb: 'Lob pinecones. They arc, so aim a bit high.' },
+  { id: 'crackers', name: 'Firecracker Launcher', cost: 1500, weight: 4, damage: 2, rate: 1.2, ammo: 14, speed: 48, spread: 0.03, blast: 8, color: '#e2493b', style: 'crackers', unlock: 'canyon', perk: 'Explodes: hits everything nearby', blurb: 'Bang! Pop! Fizz! Sorry, birds.' },
+  { id: 'bees', name: 'Bee Hive', cost: 2600, weight: 3, damage: 1, rate: 3, ammo: 36, speed: 34, spread: 0.25, homing: true, color: '#ffd23d', style: 'bees', unlock: 'canyon', perk: 'Homing: bees find their target', blurb: 'Friendly bees with a strong sense of justice.' },
+  { id: 'snow', name: 'Snowball Gatling', cost: 4000, weight: 8, damage: 1, rate: 10, ammo: 150, speed: 85, spread: 0.1, color: '#e8f4ff', style: 'snow', unlock: 'canyon', perk: '10 shots a second', blurb: 'Brrrrrrrrt. Brought from the Snowy Peaks.' },
+  { id: 'laser', name: 'Laser Monocle', cost: 7500, weight: 0.5, damage: 4, rate: 2.5, ammo: 30, speed: 0, spread: 0, hitscan: 160, color: '#ff3b6b', style: 'laser', unlock: 'canyon', perk: 'Instant beam, 160 m range', blurb: 'Very fancy. Very pew.' },
+];
+
+export const GADGETS: GadgetItem[] = [
+  { id: 'magnet', name: 'Coin Magnet', cost: 500, weight: 1.5, magnet: 16, color: '#e2493b', style: 'magnet', unlock: 'canyon', perk: 'Pulls in coins from 16 m', blurb: 'Coins simply cannot resist you.' },
+  { id: 'charm', name: 'Lucky Bamboo', cost: 900, weight: 0.2, coinMul: 1.5, color: '#5aa54a', style: 'charm', unlock: 'canyon', perk: 'Coins are worth 50% more', blurb: 'A little sprig of good fortune.' },
+  { id: 'belt', name: 'Ammo Belt', cost: 1100, weight: 3, ammoMul: 2, color: '#8a5a32', style: 'belt', unlock: 'canyon', perk: 'Double ammo', blurb: 'Pockets for days.' },
+  { id: 'radar', name: 'Threat Radar', cost: 1300, weight: 0.8, threatRadar: true, color: '#20c5b5', style: 'radar', unlock: 'canyon', perk: 'Arrows point at incoming enemies', blurb: 'Beep. Beep. Crow at two o\'clock.' },
+  { id: 'shield', name: 'Bubble Shield', cost: 1700, weight: 2, shield: 2, color: '#7fd8ff', style: 'shield', unlock: 'canyon', perk: 'Blocks 2 hits per flight', blurb: 'A very strong soap bubble.' },
+  { id: 'helmet', name: 'Spiky Helmet', cost: 2300, weight: 3, spikes: true, color: '#9aa3ad', style: 'helmet', unlock: 'canyon', perk: 'Ram enemies without slowing', blurb: 'Pointy end forward.' },
+  { id: 'suit', name: 'Heat Suit', cost: 3200, weight: 4, heatSuit: true, color: '#c0c6cf', style: 'suit', unlock: 'canyon', perk: 'Lava launches you · stronger thermals', blurb: 'Shiny, crinkly and fireproof.' },
+];
+
 export interface CatalogMap {
   ramp: RampItem[];
   sled: SledItem[];
@@ -369,13 +457,26 @@ export interface CatalogMap {
   rocket: RocketItem[];
   fuel: FuelItem[];
   sensor: SensorItem[];
+  weapon: WeaponItem[];
+  gadget: GadgetItem[];
 }
 
-export const CATALOG: CatalogMap = { ramp: RAMPS, sled: SLEDS, glider: GLIDERS, rocket: ROCKETS, fuel: FUELS, sensor: SENSORS };
+export const CATALOG: CatalogMap = {
+  ramp: RAMPS,
+  sled: SLEDS,
+  glider: GLIDERS,
+  rocket: ROCKETS,
+  fuel: FUELS,
+  sensor: SENSORS,
+  weapon: WEAPONS,
+  gadget: GADGETS,
+};
 
-/** Every shop in the hangar: the single-choice gear categories plus sensors. */
-export type ShopCategory = Category | 'sensor';
-export const SHOP_CATEGORIES: ShopCategory[] = [...CATEGORIES, 'sensor'];
+/** Every shop in the hangar. */
+export type ShopCategory = Category | 'sensor' | 'gadget';
+export const SHOP_CATEGORIES: ShopCategory[] = ['ramp', 'sled', 'glider', 'rocket', 'fuel', 'sensor', 'weapon', 'gadget'];
+/** Shops that only open once this map is unlocked. */
+export const SHOP_UNLOCK: Partial<Record<ShopCategory, MapId>> = { weapon: 'canyon', gadget: 'canyon' };
 
 export const CATEGORY_LABEL: Record<ShopCategory, string> = {
   ramp: 'Ramps',
@@ -384,6 +485,8 @@ export const CATEGORY_LABEL: Record<ShopCategory, string> = {
   rocket: 'Rockets',
   fuel: 'Fuel tanks',
   sensor: 'Sensors',
+  weapon: 'Weapons',
+  gadget: 'Gadgets',
 };
 
 export const CATEGORY_ICON: Record<ShopCategory, string> = {
@@ -393,6 +496,8 @@ export const CATEGORY_ICON: Record<ShopCategory, string> = {
   rocket: '🚀',
   fuel: '⛽',
   sensor: '📟',
+  weapon: '🎯',
+  gadget: '🧲',
 };
 
 /** Which item is equipped in each category, by id. */
@@ -400,10 +505,26 @@ export type Equipped = Record<Category, string>;
 /** Ids of owned items per shop. */
 export type Owned = Record<ShopCategory, string[]>;
 
-export const START_EQUIPPED: Equipped = { ramp: 'bump', sled: 'box', glider: 'none', rocket: 'none', fuel: 'thimble' };
+export const START_EQUIPPED: Equipped = {
+  ramp: 'bump',
+  sled: 'box',
+  glider: 'none',
+  rocket: 'none',
+  fuel: 'thimble',
+  weapon: 'none',
+};
 
 export function startOwned(): Owned {
-  return { ramp: ['bump'], sled: ['box'], glider: ['none'], rocket: ['none'], fuel: ['thimble'], sensor: [] };
+  return {
+    ramp: ['bump'],
+    sled: ['box'],
+    glider: ['none'],
+    rocket: ['none'],
+    fuel: ['thimble'],
+    weapon: ['none'],
+    sensor: [],
+    gadget: [],
+  };
 }
 
 export function findItem<C extends ShopCategory>(category: C, id: string): CatalogMap[C][number] | undefined {
@@ -416,30 +537,40 @@ export interface Loadout {
   glider: GliderItem;
   rocket: RocketItem;
   fuel: FuelItem;
+  weapon: WeaponItem;
   sensors: SensorItem[];
+  gadgets: GadgetItem[];
 }
 
-export function loadoutFor(equipped: Equipped, sensors: string[] = []): Loadout {
+export function loadoutFor(equipped: Equipped, sensors: string[] = [], gadgets: string[] = []): Loadout {
   return {
     ramp: findItem('ramp', equipped.ramp) ?? RAMPS[0],
     sled: findItem('sled', equipped.sled) ?? SLEDS[0],
     glider: findItem('glider', equipped.glider) ?? GLIDERS[0],
     rocket: findItem('rocket', equipped.rocket) ?? ROCKETS[0],
     fuel: findItem('fuel', equipped.fuel) ?? FUELS[0],
+    weapon: findItem('weapon', equipped.weapon ?? 'none') ?? WEAPONS[0],
     sensors: SENSORS.filter((s) => sensors.includes(s.id)),
+    gadgets: GADGETS.filter((g) => gadgets.includes(g.id)).slice(0, MAX_GADGETS),
   };
 }
 
 /** Pick items by their index in each (cost-sorted) list. Handy for tests and demos. */
-export function loadoutByIndex(idx: Record<Category, number>, sensors: string[] = []): Loadout {
+export function loadoutByIndex(
+  idx: Partial<Record<Category, number>>,
+  sensors: string[] = [],
+  gadgets: string[] = [],
+): Loadout {
   const at = <T>(list: T[], i: number) => list[Math.max(0, Math.min(list.length - 1, i))];
   return {
-    ramp: at(RAMPS, idx.ramp),
-    sled: at(SLEDS, idx.sled),
-    glider: at(GLIDERS, idx.glider),
-    rocket: at(ROCKETS, idx.rocket),
-    fuel: at(FUELS, idx.fuel),
+    ramp: at(RAMPS, idx.ramp ?? 0),
+    sled: at(SLEDS, idx.sled ?? 0),
+    glider: at(GLIDERS, idx.glider ?? 0),
+    rocket: at(ROCKETS, idx.rocket ?? 0),
+    fuel: at(FUELS, idx.fuel ?? 0),
+    weapon: at(WEAPONS, idx.weapon ?? 0),
     sensors: SENSORS.filter((s) => sensors.includes(s.id)),
+    gadgets: GADGETS.filter((g) => gadgets.includes(g.id)),
   };
 }
 
@@ -447,7 +578,8 @@ export function loadoutByIndex(idx: Record<Category, number>, sensors: string[] 
 export function totalMass(g: Loadout): number {
   const rocketParts = g.rocket.thrust > 0 ? g.rocket.weight + g.fuel.weight : 0;
   const instruments = g.sensors.reduce((m, s) => m + s.weight, 0);
-  return PANDA_MASS + g.sled.weight + g.glider.weight + rocketParts + instruments;
+  const gadgets = g.gadgets.reduce((m, s) => m + s.weight, 0);
+  return PANDA_MASS + g.sled.weight + g.glider.weight + rocketParts + instruments + gadgets + g.weapon.weight;
 }
 
 /** Union of everything the equipped sensors can show. */
@@ -458,4 +590,15 @@ export function sensorFeatures(g: Loadout): Set<SensorFeature> {
 /** Seconds of boost the loadout gets. */
 export function burnTime(g: Loadout): number {
   return g.rocket.thrust > 0 ? g.fuel.seconds / g.rocket.burn : 0;
+}
+
+/** Combined numeric gadget effects: the biggest magnet, total shield, product of multipliers. */
+export const gadgetMax = (g: Loadout, key: 'magnet'): number => g.gadgets.reduce((m, x) => Math.max(m, x[key] ?? 0), 0);
+export const gadgetSum = (g: Loadout, key: 'shield'): number => g.gadgets.reduce((m, x) => m + (x[key] ?? 0), 0);
+export const gadgetMul = (g: Loadout, key: 'coinMul' | 'ammoMul'): number => g.gadgets.reduce((m, x) => m * (x[key] ?? 1), 1);
+export const hasGadget = (g: Loadout, key: 'spikes' | 'heatSuit' | 'threatRadar'): boolean => g.gadgets.some((x) => x[key]);
+
+/** Is an item for sale yet? */
+export function itemUnlocked(item: Item, unlocked: readonly MapId[]): boolean {
+  return !item.unlock || unlocked.includes(item.unlock);
 }

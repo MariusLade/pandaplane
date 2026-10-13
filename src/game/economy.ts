@@ -24,7 +24,7 @@ export interface Earnings {
 const RATE = { distance: 0.5, altitude: 0.35, speed: 1.2, airtime: 2 };
 const RECORD_BONUS = 0.5;
 
-export function computeEarnings(r: FlightResult, best: Records): Earnings {
+export function computeEarnings(r: FlightResult, best: Records, pay = 1): Earnings {
   const lines: EarningLine[] = [
     { label: 'Distance', detail: `${Math.round(r.distance)} m`, amount: Math.round(r.distance * RATE.distance) },
     { label: 'Max height', detail: `${Math.round(r.maxAltitude)} m`, amount: Math.round(r.maxAltitude * RATE.altitude) },
@@ -32,6 +32,7 @@ export function computeEarnings(r: FlightResult, best: Records): Earnings {
     { label: 'Air time', detail: `${r.airtime.toFixed(1)} s`, amount: Math.round(r.airtime * RATE.airtime) },
     { label: 'Coins', detail: `× ${r.coinCount}`, amount: Math.round(r.coinMoney) },
   ];
+  if (r.kills > 0) lines.push({ label: 'Enemies', detail: `× ${r.kills}`, amount: Math.round(r.bounty) });
   const newRecords: (keyof Records)[] = [];
   if (r.distance > best.distance) {
     newRecords.push('distance');
@@ -41,6 +42,10 @@ export function computeEarnings(r: FlightResult, best: Records): Earnings {
   if (r.maxAltitude > best.altitude) newRecords.push('altitude');
   if (r.maxSpeed > best.speed) newRecords.push('speed');
   if (r.airtime > best.airtime) newRecords.push('airtime');
+  if (pay !== 1) {
+    const base = lines.reduce((s, l) => s + l.amount, 0);
+    lines.push({ label: 'Danger pay', detail: `+${Math.round((pay - 1) * 100)}%`, amount: Math.round(base * (pay - 1)) });
+  }
   const total = lines.reduce((s, l) => s + l.amount, 0);
   return { lines, total, newRecords };
 }

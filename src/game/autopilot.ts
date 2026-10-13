@@ -9,7 +9,7 @@ import type { Flight, FlightInput } from './flight';
 export function autopilot(f: Flight, climbDeg = 32): FlightInput {
   const { glider, sled } = f.gear;
   const hasFuel = f.fuel > 0;
-  if (f.phase !== 'air') return { pitch: 0, boost: hasFuel };
+  if (f.phase !== 'air') return { pitch: 0, boost: hasFuel, fire: false };
 
   let target: number;
   const flightAngle = Math.atan2(f.vy, f.vx);
@@ -25,5 +25,7 @@ export function autopilot(f: Flight, climbDeg = 32): FlightInput {
   }
   // Out of fuel with wings that flap: beat them (fresh presses) whenever sinking.
   const flap = !hasFuel && f.flapsLeft > 0 && f.vy < -2 && Math.floor(f.time * 2) % 2 === 0;
-  return { pitch: clamp(wrapAngle(target - f.pitch) * 4, -1, 1), boost: hasFuel || flap };
+  // Shoot whenever something is coming.
+  const fire = f.gear.weapon.rate > 0 && f.enemies.length > 0;
+  return { pitch: clamp(wrapAngle(target - f.pitch) * 4, -1, 1), boost: hasFuel || flap, fire };
 }

@@ -1,8 +1,7 @@
 import { mixRgb, rgb, shade, type RGB } from '../core/math';
 import { fbm1, hash } from '../core/rng';
-import { GOAL_DISTANCE } from '../game/constants';
 import type { Ramp } from '../game/ramp';
-import { biomeAt, type World } from '../game/world';
+import { mainBiome, type World } from '../game/world';
 import type { Camera } from './camera';
 import { drawTree, TREE_HEIGHT, VARIANTS, type TreeKind } from './flora';
 
@@ -37,7 +36,7 @@ export function drawTerrain(ctx: CanvasRenderingContext2D, cam: Camera, world: W
   const STOPS = 8;
   for (let i = 0; i <= STOPS; i++) {
     const t = i / STOPS;
-    const b = biomeAt(cam.wx(t * w));
+    const b = world.biomeAt(cam.wx(t * w));
     ground.addColorStop(t, rgb(mixRgb(b.a.ground, b.b.ground, b.t)));
     deep.addColorStop(t, rgb(mixRgb(b.a.groundDeep, b.b.groundDeep, b.t)));
     lip.addColorStop(t, rgb(mixRgb(b.a.lip, b.b.lip, b.t)));
@@ -97,7 +96,7 @@ function drawPebbles(ctx: CanvasRenderingContext2D, cam: Camera, world: World) {
     const sy = cam.sy(world.rawGround(x) - depth);
     if (sy > cam.h + 10) continue;
     const r = (0.15 + hash(world.seed, c, 304) * 0.45) * ppm;
-    const b = biomeAt(x);
+    const b = world.biomeAt(x);
     const base = mixRgb(b.a.groundDeep, b.b.groundDeep, b.t);
     ctx.fillStyle = rgb(shade(base, hash(world.seed, c, 305) > 0.5 ? -0.25 : 0.18));
     ctx.beginPath();
@@ -118,7 +117,11 @@ function drawPonds(ctx: CanvasRenderingContext2D, cam: Camera, world: World, tim
     ctx.closePath();
     const bottom = cam.sy(pond.level - 6);
     const g = ctx.createLinearGradient(0, top, 0, bottom);
-    if (pond.kind === 'ice') {
+    if (pond.kind === 'lava') {
+      g.addColorStop(0, '#ffd24a');
+      g.addColorStop(0.25, '#ff7a1f');
+      g.addColorStop(1, '#8c1d0e');
+    } else if (pond.kind === 'ice') {
       g.addColorStop(0, 'rgba(214,240,255,0.95)');
       g.addColorStop(1, 'rgba(150,200,235,0.9)');
     } else {
@@ -130,12 +133,16 @@ function drawPonds(ctx: CanvasRenderingContext2D, cam: Camera, world: World, tim
     const x0 = cam.sx(pond.x0);
     const x1 = cam.sx(pond.x1);
     ctx.lineWidth = Math.max(2, 0.25 * cam.ppm);
-    ctx.strokeStyle = pond.kind === 'ice' ? '#ffffff' : 'rgba(220,245,255,0.9)';
+    ctx.strokeStyle = pond.kind === 'lava' ? '#fff3b0' : pond.kind === 'ice' ? '#ffffff' : 'rgba(220,245,255,0.9)';
     ctx.beginPath();
     ctx.moveTo(x0, top);
     ctx.lineTo(x1, top);
     ctx.stroke();
     const span = pond.x1 - pond.x0;
+    if (pond.kind === 'lava') {
+      drawLavaSurface(ctx, cam, world, pond.x0, span, top, time);
+      continue;
+    }
     if (pond.kind === 'ice') {
       // Cracks and glints.
       ctx.strokeStyle = 'rgba(255,255,255,0.8)';
@@ -164,8 +171,7 @@ function drawPonds(ctx: CanvasRenderingContext2D, cam: Camera, world: World, tim
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
-      const b = biomeAt(pond.x0);
-      if (b.a.decor !== 'pine') {
+      if (mainBiome(world.biomeAt(pond.x0)).grass) {
         for (let i = 0; i < Math.min(5, span / 8); i++) {
           const cx = pond.x0 + 1 + hash(world.seed, i, 79) * (span - 2);
           const r = 0.5 * cam.ppm;
@@ -186,6 +192,55 @@ function drawPonds(ctx: CanvasRenderingContext2D, cam: Camera, world: World, tim
   }
 }
 
+/** Heat glow, bubbles and crust plates on a lava pool. */
+function drawLavaSurface(ctx: CanvasRenderingContext2D, cam: Camera, world: World, x0: number, span: number, top: number, time: number) {
+  const ppm = cam.ppm;
+  const left = cam.sx(x0);
+  const width = span * ppm;
+  const glow = ctx.createLinearGradient(0, top - 6 * ppm, 0, top);
+  glow.addColorStop(0, 'rgba(255,120,40,0)');
+  glow.addColorStop(1, 'rgba(255,120,40,0.35)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(left, top - 6 * ppm, width, 6 * ppm);
+  if (ppm < 1.5) return;
+  const seed = Math.floor(x0);
+  // Dark crust plates drifting slowly.
+  ctx.fillStyle = 'rgba(60,20,15,0.55)';
+  for (let i = 0; i < Math.min(10, span / 4); i++) {
+    const t = (hash(world.seed, i, seed) + time * 0.02) % 1;
+    const cx = left + t * width;
+    const w = (1 + hash(world.seed, i + 20, seed) * 2.5) * ppm;
+    ctx.beginPath();
+    ctx.ellipse(cx, top + 0.25 * ppm, w, 0.25 * ppm, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Bubbles that swell and pop.
+  for (let i = 0; i < Math.min(8, span / 5); i++) {
+    const phase = (time * (0.6 + hash(world.seed, i + 40, seed)) + hash(world.seed, i + 50, seed)) % 1;
+    const cx = left + hash(world.seed, i + 60, seed) * width;
+    const r = phase * 0.6 * ppm;
+    ctx.fillStyle = `rgba(255,220,120,${0.9 - phase * 0.6})`;
+    ctx.beginPath();
+    ctx.arc(cx, top, r, Math.PI, 0);
+    ctx.fill();
+  }
+}
+
+/** Glowing cracks in volcanic ground. */
+function drawEmbers(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: number, c: number, seed: number, time: number) {
+  if (hash(seed, c, 420) > 0.35) return;
+  const flicker = 0.55 + 0.45 * Math.sin(time * (2 + hash(seed, c, 421) * 3) + c);
+  ctx.strokeStyle = `rgba(255,${120 + flicker * 80},50,${0.5 + flicker * 0.5})`;
+  ctx.lineWidth = Math.max(1, 0.1 * ppm);
+  ctx.beginPath();
+  const w = (0.6 + hash(seed, c, 422) * 1.2) * ppm;
+  ctx.moveTo(sx - w, sy + 0.2 * ppm);
+  ctx.lineTo(sx - w * 0.3, sy + 0.5 * ppm);
+  ctx.lineTo(sx + w * 0.2, sy + 0.25 * ppm);
+  ctx.lineTo(sx + w, sy + 0.6 * ppm);
+  ctx.stroke();
+}
+
 /** Grass tufts on green ground, glitter on snow. */
 function drawGroundDetail(ctx: CanvasRenderingContext2D, cam: Camera, world: World, time: number) {
   const ppm = cam.ppm;
@@ -199,11 +254,16 @@ function drawGroundDetail(ctx: CanvasRenderingContext2D, cam: Camera, world: Wor
     const x = (c + hash(world.seed, c, 401)) * cell;
     if (x > CLEAR_FROM && x < CLEAR_TO) continue;
     if (world.surfaceAt(x) !== 'ground') continue;
-    const b = biomeAt(x);
+    const b = world.biomeAt(x);
     const biome = hash(world.seed, c, 402) < b.t ? b.b : b.a;
     const sx = cam.sx(x);
     const sy = cam.sy(world.groundY(x)) + ppm * 0.1;
-    if (biome.decor === 'snowpine') {
+    if (biome.embers) {
+      drawEmbers(ctx, sx, sy, ppm, c, world.seed, time);
+      continue;
+    }
+    if (!biome.grass && !biome.snowy) continue;
+    if (biome.snowy) {
       const tw = Math.sin(time * 3 + c * 1.7);
       if (hash(world.seed, c, 403) < 0.3 && tw > 0.6) {
         ctx.fillStyle = `rgba(255,255,255,${(tw - 0.6) * 2.5})`;
@@ -229,22 +289,13 @@ function drawGroundDetail(ctx: CanvasRenderingContext2D, cam: Camera, world: Wor
   ctx.lineCap = 'butt';
 }
 
-type Prop = TreeKind | 'rock' | 'flowers' | 'mushroom' | 'snowman' | 'lantern' | 'drift';
+type Prop = TreeKind | 'rock' | 'flowers' | 'mushroom' | 'snowman' | 'lantern' | 'drift' | 'crystal' | 'basalt';
 
-/** What grows where. Weights per biome; each 4 m cell rolls once. */
-const SCENERY: Record<string, [Prop, number][]> = {
-  'Snowy Peaks': [['snowpine', 0.34], ['dead', 0.03], ['rock', 0.07], ['drift', 0.08], ['snowman', 0.006]],
-  'Pine Valley': [['pine', 0.28], ['birch', 0.08], ['bush', 0.1], ['rock', 0.06], ['mushroom', 0.02]],
-  'Flower Meadows': [['oak', 0.13], ['birch', 0.05], ['bush', 0.12], ['flowers', 0.28], ['mushroom', 0.04], ['rock', 0.03]],
-  'Bamboo Forest': [['bamboo', 0.42], ['bush', 0.1], ['rock', 0.04], ['flowers', 0.05]],
-  'Panda Paradise': [['cherry', 0.22], ['bamboo', 0.2], ['lantern', 0.05], ['flowers', 0.25], ['bush', 0.05]],
-};
-
-function pickProp(name: string, roll: number): Prop | null {
+function pickProp(scenery: [string, number][], roll: number): Prop | null {
   let acc = 0;
-  for (const [prop, weight] of SCENERY[name] ?? []) {
+  for (const [prop, weight] of scenery) {
     acc += weight;
-    if (roll < acc) return prop;
+    if (roll < acc) return prop as Prop;
   }
   return null;
 }
@@ -277,11 +328,11 @@ export function drawDecor(
     const x = (c + hash(seed, c, 8) * 0.8) * DECOR_CELL;
     if (x > CLEAR_FROM && x < CLEAR_TO) continue;
     if (world.surfaceAt(x) !== 'ground') continue;
-    const b = biomeAt(x);
+    const b = world.biomeAt(x);
     const biome = hash(seed, c, 9) < b.t ? b.b : b.a;
     // Groves and clearings: density follows a slow noise.
     const grove = 0.35 + 1.3 * Math.max(0, fbm1(seed + 55, x / 140, 2) + 0.35);
-    const prop = pickProp(biome.name, hash(seed, c, 7) / grove);
+    const prop = pickProp(biome.scenery, hash(seed, c, 7) / grove);
     if (!prop) continue;
     const isTree = prop in TREE_HEIGHT;
     if (back && !isTree) continue;
@@ -304,7 +355,7 @@ export function drawDecor(
     if (ppm < 1.5) continue;
     switch (prop) {
       case 'rock':
-        drawRock(ctx, sx, sy, ppm, size, biome.groundDeep, biome.decor === 'snowpine');
+        drawRock(ctx, sx, sy, ppm, size, biome.groundDeep, biome.snowy);
         break;
       case 'flowers':
         drawFlowers(ctx, sx, sy, ppm, size, c, seed, time);
@@ -317,6 +368,12 @@ export function drawDecor(
         break;
       case 'lantern':
         drawLantern(ctx, sx, sy, ppm, time + c);
+        break;
+      case 'crystal':
+        drawCrystals(ctx, sx, sy, ppm, size, c, seed, time);
+        break;
+      case 'basalt':
+        drawBasalt(ctx, sx, sy, ppm, size, c, seed);
         break;
       case 'drift':
         ctx.fillStyle = '#ffffff';
@@ -478,7 +535,7 @@ export function drawSigns(ctx: CanvasRenderingContext2D, cam: Camera, world: Wor
   const x1 = cam.wx(cam.w + 80);
   const scale = Math.max(ppm, 4);
   for (let d = Math.max(SIGN_EVERY, Math.ceil(x0 / SIGN_EVERY) * SIGN_EVERY); d <= x1; d += SIGN_EVERY) {
-    if (d === GOAL_DISTANCE) continue;
+    if (d === world.map.goal) continue;
     const sx = cam.sx(d);
     const sy = cam.sy(world.groundY(d));
     const postH = 2.2 * scale;
@@ -502,30 +559,45 @@ export function drawSigns(ctx: CanvasRenderingContext2D, cam: Camera, world: Wor
   ctx.textBaseline = 'alphabetic';
 
   // The goal gate.
-  const gx = cam.sx(GOAL_DISTANCE);
-  if (gx > -40 * scale && gx < cam.w + 40 * scale) drawGoalGate(ctx, gx, cam.sy(world.groundY(GOAL_DISTANCE)), Math.max(ppm, 2));
+  const goal = world.map.goal;
+  const gx = cam.sx(goal);
+  if (gx > -40 * scale && gx < cam.w + 40 * scale)
+    drawGoalGate(ctx, gx, cam.sy(world.groundY(goal)), Math.max(ppm, 2), world.map.goalName.toUpperCase());
 }
 
-function drawGoalGate(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: number) {
+function drawGoalGate(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: number, label: string) {
+  const pagoda = label.includes('PAGODA');
   const hgt = 16 * ppm;
   const half = 7 * ppm;
   const post = 1 * ppm;
-  ctx.fillStyle = '#d6372b';
+  ctx.fillStyle = pagoda ? '#c98a12' : '#d6372b';
   ctx.fillRect(sx - half - post / 2, sy - hgt, post, hgt);
   ctx.fillRect(sx + half - post / 2, sy - hgt, post, hgt);
   ctx.fillRect(sx - half - 2 * ppm, sy - hgt * 0.78, half * 2 + 4 * ppm, 0.8 * ppm);
-  ctx.fillStyle = '#2b2b2b';
-  ctx.beginPath();
-  ctx.moveTo(sx - half - 3.5 * ppm, sy - hgt - 0.2 * ppm);
-  ctx.quadraticCurveTo(sx, sy - hgt + 1.2 * ppm, sx + half + 3.5 * ppm, sy - hgt - 0.2 * ppm);
-  ctx.lineTo(sx + half + 3 * ppm, sy - hgt + 1.2 * ppm);
-  ctx.quadraticCurveTo(sx, sy - hgt + 2.4 * ppm, sx - half - 3 * ppm, sy - hgt + 1.2 * ppm);
-  ctx.closePath();
-  ctx.fill();
+  // Roof: one sweeping beam, or a stack of golden pagoda tiers.
+  const tiers = pagoda ? 3 : 1;
+  for (let i = 0; i < tiers; i++) {
+    const y = sy - hgt - i * 3.2 * ppm;
+    const w = half + 3.5 * ppm - i * 2.2 * ppm;
+    ctx.fillStyle = pagoda ? (i % 2 ? '#ffd23d' : '#e0a020') : '#2b2b2b';
+    ctx.beginPath();
+    ctx.moveTo(sx - w, y - 0.2 * ppm);
+    ctx.quadraticCurveTo(sx, y + 1.2 * ppm, sx + w, y - 0.2 * ppm);
+    ctx.lineTo(sx + w - 0.5 * ppm, y + 1.2 * ppm);
+    ctx.quadraticCurveTo(sx, y + 2.4 * ppm, sx - w + 0.5 * ppm, y + 1.2 * ppm);
+    ctx.closePath();
+    ctx.fill();
+  }
+  if (pagoda) {
+    ctx.fillStyle = '#ffe08a';
+    ctx.beginPath();
+    ctx.arc(sx, sy - hgt - tiers * 3.2 * ppm + 0.6 * ppm, 0.8 * ppm, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.fillStyle = '#ffe28a';
   ctx.font = `800 ${Math.round(1.3 * ppm)}px system-ui, sans-serif`;
   ctx.textAlign = 'center';
-  ctx.fillText('PANDA PARADISE', sx, sy - hgt * 0.88);
+  ctx.fillText(label, sx, sy - hgt * 0.88);
 }
 
 /** A big coil spring (and a bamboo arm for the catapult) under the lip. */
@@ -621,4 +693,57 @@ export function drawRamp(ctx: CanvasRenderingContext2D, cam: Camera, ramp: Ramp,
   };
   flag(pts[0].x - 0.6, pts[0].y, '#e2493b');
   flag(ramp.lip.x + 0.4, world.groundY(ramp.lip.x + 0.4), '#2f7de1');
+}
+
+/** A cluster of glowing crystal shards. */
+function drawCrystals(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: number, size: number, c: number, seed: number, time: number) {
+  const n = 2 + Math.floor(hash(seed, c, 90) * 4);
+  const hue = hash(seed, c, 91) < 0.5 ? [180, 140, 255] : [120, 220, 255];
+  const pulse = 0.7 + 0.3 * Math.sin(time * 2 + c);
+  const glow = ctx.createRadialGradient(sx, sy - ppm, 0, sx, sy - ppm, 3 * ppm * size);
+  glow.addColorStop(0, `rgba(${hue[0]},${hue[1]},${hue[2]},${0.3 * pulse})`);
+  glow.addColorStop(1, `rgba(${hue[0]},${hue[1]},${hue[2]},0)`);
+  ctx.fillStyle = glow;
+  ctx.fillRect(sx - 3 * ppm * size, sy - 4 * ppm * size, 6 * ppm * size, 4 * ppm * size);
+  for (let i = 0; i < n; i++) {
+    const h = (1.2 + hash(seed, c, 92 + i) * 2.4) * size * ppm;
+    const w = (0.25 + hash(seed, c, 100 + i) * 0.2) * size * ppm;
+    const x = sx + (i - (n - 1) / 2) * 0.55 * ppm;
+    const tilt = (hash(seed, c, 110 + i) - 0.5) * 0.8;
+    ctx.save();
+    ctx.translate(x, sy + 0.2 * ppm);
+    ctx.rotate(tilt);
+    ctx.fillStyle = `rgb(${hue[0] * 0.75},${hue[1] * 0.75},${hue[2] * 0.85})`;
+    ctx.beginPath();
+    ctx.moveTo(-w, 0);
+    ctx.lineTo(-w, -h * 0.75);
+    ctx.lineTo(0, -h);
+    ctx.lineTo(w, -h * 0.75);
+    ctx.lineTo(w, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.25 * pulse})`;
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.3, -h * 0.1);
+    ctx.lineTo(-w * 0.3, -h * 0.72);
+    ctx.lineTo(0, -h * 0.92);
+    ctx.lineTo(0, -h * 0.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+/** Hexagonal basalt columns of different heights. */
+function drawBasalt(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: number, size: number, c: number, seed: number) {
+  const n = 2 + Math.floor(hash(seed, c, 120) * 4);
+  const w = 0.7 * ppm * size;
+  for (let i = 0; i < n; i++) {
+    const h = (1 + hash(seed, c, 121 + i) * 3) * ppm * size;
+    const x = sx + (i - n / 2) * w;
+    ctx.fillStyle = i % 2 ? '#2e2a30' : '#3a353c';
+    ctx.fillRect(x, sy - h, w - 1, h + 2);
+    ctx.fillStyle = '#4c4650';
+    ctx.fillRect(x, sy - h, w - 1, Math.max(1, 0.18 * ppm));
+  }
 }

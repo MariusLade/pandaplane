@@ -15,12 +15,10 @@ export const DECK_CLEARANCE = 0.7;
 export const PANDA_MASS = 100;
 /** Ramp decks are icy: sled friction is scaled by this on the ramp. */
 export const RAMP_FRICTION_SCALE = 0.55;
-/** Distance that counts as "reaching Panda Paradise". */
-export const GOAL_DISTANCE = 7000;
 /** Panda's collision radius against the ground. */
 export const PANDA_RADIUS = 0.45;
 /** Radius used when collecting pickups. */
-export const PICKUP_REACH = 1.2;
+export const PICKUP_REACH = 2.2;
 
 /** Quadratic drag of the panda's body (per metre). */
 export const BODY_DRAG = 0.0026;

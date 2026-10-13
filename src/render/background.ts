@@ -1,12 +1,8 @@
 import { clamp, hexToRgb, invLerp, mixRgb, rgb, shade, type RGB } from '../core/math';
 import { fbm1, hash, mulberry32 } from '../core/rng';
-import { biomeAt } from '../game/world';
+import type { World } from '../game/world';
 import type { Camera } from './camera';
 
-const SKY_LOW_TOP = hexToRgb('#4aa3ee');
-const SKY_LOW_BOTTOM = hexToRgb('#d4f0ff');
-const SKY_HIGH_TOP = hexToRgb('#173f8f');
-const SKY_HIGH_BOTTOM = hexToRgb('#7fb8ee');
 const SPACE_TOP = hexToRgb('#03041a');
 const SPACE_BOTTOM = hexToRgb('#1d2f6b');
 const PARADISE_BOTTOM = hexToRgb('#ffe2a8');
@@ -18,13 +14,16 @@ export interface SkyColors {
   space: number;
 }
 
-export function skyColors(altitude: number, x: number): SkyColors {
+export function skyColors(world: World, altitude: number, x: number): SkyColors {
+  const sky = world.map.sky;
   const hi = invLerp(200, 1800, altitude);
   const sp = invLerp(1500, 4000, altitude);
-  let top = mixRgb(mixRgb(SKY_LOW_TOP, SKY_HIGH_TOP, hi), SPACE_TOP, sp);
-  let bottom = mixRgb(mixRgb(SKY_LOW_BOTTOM, SKY_HIGH_BOTTOM, hi), SPACE_BOTTOM, sp);
-  const b = biomeAt(x);
-  const paradise = (b.a.name === 'Panda Paradise' ? 1 : 0) * (1 - b.t) + (b.b.name === 'Panda Paradise' ? 1 : 0) * b.t;
+  let top = mixRgb(mixRgb(sky.lowTop, sky.highTop, hi), SPACE_TOP, sp);
+  let bottom = mixRgb(mixRgb(sky.lowBottom, sky.highBottom, hi), SPACE_BOTTOM, sp);
+  // The goal area glows warmly.
+  const goalName = world.map.goalName;
+  const b = world.biomeAt(x);
+  const paradise = (b.a.name === goalName ? 1 : 0) * (1 - b.t) + (b.b.name === goalName ? 1 : 0) * b.t;
   if (paradise > 0) {
     bottom = mixRgb(bottom, PARADISE_BOTTOM, paradise * 0.6 * (1 - sp));
     top = mixRgb(top, hexToRgb('#69a8ee'), paradise * 0.3 * (1 - sp));
@@ -82,9 +81,9 @@ export class Background {
     this.seed = seed;
   }
 
-  draw(ctx: CanvasRenderingContext2D, cam: Camera, time: number): void {
+  draw(ctx: CanvasRenderingContext2D, cam: Camera, time: number, world: World): void {
     const { w, h } = cam;
-    const sky = skyColors(cam.y, cam.x);
+    const sky = skyColors(world, cam.y, cam.x);
 
     const g = ctx.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, rgb(sky.top));
@@ -93,9 +92,10 @@ export class Background {
     ctx.fillRect(0, 0, w, h);
 
     if (sky.space > 0.01) this.drawStars(ctx, cam, sky.space, time);
-    this.drawSun(ctx, cam, sky);
+    this.drawSun(ctx, cam, sky, world);
+    if (world.map.sky.volcano) this.drawVolcano(ctx, cam, sky, time);
     this.drawFarClouds(ctx, cam, sky);
-    this.drawMountains(ctx, cam, sky);
+    this.drawMountains(ctx, cam, sky, world);
   }
 
   private drawStars(ctx: CanvasRenderingContext2D, cam: Camera, alpha: number, time: number) {
@@ -112,19 +112,63 @@ export class Background {
     ctx.globalAlpha = 1;
   }
 
-  private drawSun(ctx: CanvasRenderingContext2D, cam: Camera, sky: SkyColors) {
+  private drawSun(ctx: CanvasRenderingContext2D, cam: Camera, sky: SkyColors, world: World) {
+    const style = world.map.sky;
     const x = cam.w * 0.8;
     const y = cam.h * 0.2 + clamp(-cam.y * 0.02, -40, 40);
     const r = Math.min(cam.w, cam.h) * 0.06;
     const glow = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 4);
-    glow.addColorStop(0, `rgba(255,248,214,${0.55 * (1 - sky.space * 0.6)})`);
-    glow.addColorStop(1, 'rgba(255,248,214,0)');
+    glow.addColorStop(0, `rgba(${style.sunGlow},${0.55 * (1 - sky.space * 0.6)})`);
+    glow.addColorStop(1, `rgba(${style.sunGlow},0)`);
     ctx.fillStyle = glow;
     ctx.fillRect(x - r * 4, y - r * 4, r * 8, r * 8);
-    ctx.fillStyle = '#fff8dc';
+    ctx.fillStyle = style.sun;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  /** A distant smoking volcano behind the mountain ranges. */
+  private drawVolcano(ctx: CanvasRenderingContext2D, cam: Camera, sky: SkyColors, time: number) {
+    const { w, h } = cam;
+    const sink = clamp((cam.y - 40) * 0.08, -h * 0.1, h * 1.5);
+    const cx = w * 0.62 - ((cam.x * 0.012) % (w * 2.4)) + w * 0.3;
+    const base = h * 0.64 + sink;
+    const peak = base - Math.min(w, h) * 0.42;
+    const half = Math.min(w, h) * 0.75;
+    if (peak > h) return;
+    const color = mixRgb([70, 40, 60], sky.bottom, 0.45);
+    ctx.fillStyle = rgb(color);
+    ctx.beginPath();
+    ctx.moveTo(cx - half, base + 40);
+    ctx.quadraticCurveTo(cx - half * 0.3, base - (base - peak) * 0.55, cx - half * 0.12, peak);
+    ctx.lineTo(cx + half * 0.12, peak);
+    ctx.quadraticCurveTo(cx + half * 0.3, base - (base - peak) * 0.55, cx + half, base + 40);
+    ctx.closePath();
+    ctx.fill();
+    // Lava glow in the crater and down one flank.
+    const glow = ctx.createRadialGradient(cx, peak, 2, cx, peak, half * 0.3);
+    glow.addColorStop(0, 'rgba(255,140,60,0.75)');
+    glow.addColorStop(1, 'rgba(255,90,40,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - half * 0.3, peak - half * 0.3, half * 0.6, half * 0.6);
+    ctx.strokeStyle = 'rgba(255,120,50,0.6)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx + half * 0.05, peak + 2);
+    ctx.quadraticCurveTo(cx + half * 0.12, peak + (base - peak) * 0.4, cx + half * 0.2, base - (base - peak) * 0.25);
+    ctx.stroke();
+    // Smoke plume drifting off to the right.
+    for (let i = 0; i < 9; i++) {
+      const t = (time * 0.05 + i / 9) % 1;
+      const px = cx + t * half * 0.9 + Math.sin(t * 6 + i) * 8;
+      const py = peak - t * (base - peak) * 0.9;
+      const pr = half * (0.06 + t * 0.2);
+      ctx.fillStyle = rgb(mixRgb([90, 80, 95], sky.top, 0.3), 0.35 * (1 - t) * (1 - sky.space));
+      ctx.beginPath();
+      ctx.arc(px, py, pr, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   private drawFarClouds(ctx: CanvasRenderingContext2D, cam: Camera, sky: SkyColors) {
@@ -145,10 +189,10 @@ export class Background {
     }
   }
 
-  private drawMountains(ctx: CanvasRenderingContext2D, cam: Camera, sky: SkyColors) {
-    const b = biomeAt(cam.x);
+  private drawMountains(ctx: CanvasRenderingContext2D, cam: Camera, sky: SkyColors, world: World) {
+    const b = world.biomeAt(cam.x);
     const hills = mixRgb(b.a.hills, b.b.hills, b.t);
-    const snowy = (b.a.decor === 'snowpine' ? 1 - b.t : 0) + (b.b.decor === 'snowpine' ? b.t : 0);
+    const snowy = (b.a.snowy ? 1 - b.t : 0) + (b.b.snowy ? b.t : 0);
     const layers = [
       { p: 0.03, amp: 0.3, base: 0.62, haze: 0.62, freq: 1 / 220, oct: 5, sink: 0.12 },
       { p: 0.08, amp: 0.2, base: 0.7, haze: 0.42, freq: 1 / 160, oct: 4, sink: 0.25 },
@@ -209,14 +253,14 @@ export class Background {
   }
 
   /** World-space clouds the panda flies past. Drawn after terrain, before the panda. */
-  drawNearClouds(ctx: CanvasRenderingContext2D, cam: Camera) {
+  drawNearClouds(ctx: CanvasRenderingContext2D, cam: Camera, world: World) {
     const cell = 150;
     const x0 = cam.wx(-200);
     const x1 = cam.wx(cam.w + 200);
     const first = Math.floor(x0 / cell);
     const last = Math.floor(x1 / cell);
     if (last - first > 400) return;
-    const sky = skyColors(cam.y, cam.x);
+    const sky = skyColors(world, cam.y, cam.x);
     for (let i = first; i <= last; i++) {
       for (let k = 0; k < 2; k++) {
         if (hash(this.seed, i, 61 + k) > 0.45) continue;

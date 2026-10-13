@@ -1,4 +1,3 @@
-import { GOAL_DISTANCE } from '../game/constants';
 import type { Flight } from '../game/flight';
 import { $, metres, money } from './dom';
 
@@ -13,6 +12,12 @@ export class Hud {
   private coins = $('#hud-coins', this.root);
   private flapsChip = $('#hud-flaps-chip', this.root);
   private flaps = $('#hud-flaps', this.root);
+  private ammoChip = $('#hud-ammo-chip', this.root);
+  private ammo = $('#hud-ammo', this.root);
+  private shieldChip = $('#hud-shield-chip', this.root);
+  private shield = $('#hud-shield', this.root);
+  private killsChip = $('#hud-kills-chip', this.root);
+  private kills = $('#hud-kills', this.root);
   private progress = $('#hud-progress-fill', this.root);
   private marker = $('#hud-progress-panda', this.root);
   private best = $('#hud-progress-best', this.root);
@@ -26,6 +31,9 @@ export class Hud {
 
   configure(f: Flight): void {
     this.flapsChip.hidden = !f.gear.glider.flaps;
+    this.ammoChip.hidden = f.gear.weapon.rate <= 0;
+    this.shieldChip.hidden = f.shield <= 0;
+    this.killsChip.hidden = f.gear.weapon.rate <= 0;
     this.cache.clear();
   }
 
@@ -46,10 +54,16 @@ export class Hud {
     this.set(this.dist, metres(f.distance));
     this.set(this.coins, money(f.coinMoney));
     if (f.gear.glider.flaps) this.set(this.flaps, `× ${f.flapsLeft}`);
-    const p = Math.min(1, f.distance / GOAL_DISTANCE);
+    if (f.gear.weapon.rate > 0) {
+      this.set(this.ammo, `× ${f.ammo}`);
+      this.set(this.kills, `${f.kills}`);
+    }
+    if (!this.shieldChip.hidden) this.set(this.shield, f.shield > 0 ? `× ${f.shield}` : 'popped');
+    const goal = f.world.map.goal;
+    const p = Math.min(1, f.distance / goal);
     this.style(this.progress, 'width', `${(p * 100).toFixed(2)}%`);
     this.style(this.marker, 'left', `${(p * 100).toFixed(2)}%`);
-    this.style(this.best, 'left', `${(Math.min(1, bestDistance / GOAL_DISTANCE) * 100).toFixed(2)}%`);
+    this.style(this.best, 'left', `${(Math.min(1, bestDistance / goal) * 100).toFixed(2)}%`);
   }
 
   showToast(text: string, ms = 2200): void {

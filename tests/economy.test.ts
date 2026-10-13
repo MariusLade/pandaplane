@@ -10,6 +10,8 @@ const result: FlightResult = {
   coinMoney: 12,
   coinCount: 3,
   reachedGoal: false,
+  kills: 0,
+  bounty: 0,
 };
 
 describe('economy', () => {

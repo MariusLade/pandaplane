@@ -13,6 +13,8 @@ export interface PandaPose {
   wind: number;
   /** 1 right after a wing beat, fading to 0. */
   flap?: number;
+  /** Rocket power, 0..1, for the size of the exhaust. */
+  thrust?: number;
 }
 
 const BLACK = '#1f1d24';
@@ -44,7 +46,7 @@ export function drawPanda(
   const hasRocket = gear.rocket.style !== 'none';
   if (gs === 'carpet') drawCarpet(ctx, gear.glider.color, pose);
 
-  if (hasRocket && pose.boosting) drawFlame(ctx, gear.rocket.style, pose.time);
+  if (hasRocket && pose.boosting) drawFlame(ctx, gear.rocket.style, pose.time, pose.thrust ?? 0.5);
   drawScarf(ctx, pose);
   if (hasGlider) drawGliderBack(ctx, gear.glider.style, gear.glider.color, gear.glider.span, pose);
   if (hasRocket) drawRocket(ctx, gear.rocket.style, gear.rocket.color, pose.time);
@@ -418,6 +420,28 @@ function drawSled(ctx: CanvasRenderingContext2D, style: SledStyle, color: string
       ctx.fill();
       break;
     }
+    case 'obsidian': {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(-0.95, 0.4);
+      ctx.lineTo(-0.7, 0.3);
+      ctx.lineTo(0.75, 0.3);
+      ctx.lineTo(1.05, 0.38);
+      ctx.lineTo(0.8, 0.48);
+      ctx.lineTo(-0.8, 0.48);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(190,140,255,0.55)';
+      ctx.beginPath();
+      ctx.moveTo(-0.5, 0.33);
+      ctx.lineTo(0.3, 0.33);
+      ctx.lineTo(0.1, 0.38);
+      ctx.lineTo(-0.6, 0.38);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,120,60,0.8)';
+      ctx.fillRect(-0.7, 0.45, 1.4, 0.025);
+      break;
+    }
     case 'hover': {
       const glow = 0.5 + 0.5 * Math.sin(time * 10);
       ctx.fillStyle = `rgba(80,255,230,${0.25 + glow * 0.25})`;
@@ -657,42 +681,64 @@ function drawRocket(ctx: CanvasRenderingContext2D, style: RocketStyle, color: st
   ctx.stroke();
 }
 
-function drawFlame(ctx: CanvasRenderingContext2D, style: RocketStyle, time: number) {
+const FLAME_PALETTES = {
+  fire: { glow: '255,120,30', mid: '255,190,70', core: '255,250,225' },
+  ion: { glow: '60,130,255', mid: '130,210,255', core: '235,250,255' },
+  steam: { glow: '200,225,255', mid: '235,245,255', core: '255,255,255' },
+  magma: { glow: '255,60,20', mid: '255,140,40', core: '255,235,160' },
+};
+
+/** Exhaust: additive glow, flickering tongues, a white-hot core and shock diamonds. */
+function drawFlame(ctx: CanvasRenderingContext2D, style: RocketStyle, time: number, power: number) {
   const { len, r } = rocketSize(style);
   const fx = ROCKET_X - len / 2 - 0.05;
-  const f = 0.8 + Math.sin(time * 60) * 0.15 + Math.sin(time * 37) * 0.1;
-  const ion = style === 'ion';
-  const soda = style === 'soda' || style === 'cola' || style === 'kettle';
-  const layers: [string, number, number][] = ion
-    ? [
-        ['rgba(60,140,255,0.7)', 1.1, 0.16],
-        ['rgba(140,220,255,0.9)', 0.75, 0.1],
-        ['rgba(235,250,255,1)', 0.4, 0.05],
-      ]
-    : soda
-      ? [
-          ['rgba(220,255,230,0.75)', 0.9, 0.16],
-          ['rgba(255,255,255,0.95)', 0.5, 0.09],
-        ]
-      : [
-          ['rgba(255,90,40,0.85)', 1.0, 0.2],
-          ['rgba(255,180,60,0.95)', 0.7, 0.14],
-          ['rgba(255,250,200,1)', 0.4, 0.08],
-        ];
+  const steamy = style === 'soda' || style === 'cola' || style === 'kettle';
+  const pal = style === 'ion' ? FLAME_PALETTES.ion : steamy ? FLAME_PALETTES.steam : style === 'magma' ? FLAME_PALETTES.magma : FLAME_PALETTES.fire;
   const ys = style === 'twin' ? [ROCKET_Y - r * 1.05, ROCKET_Y + r * 1.05] : [ROCKET_Y];
-  const size =
-    style === 'space' || style === 'afterburner' ? 1.3 : style === 'cola' ? 1.5 : style === 'firework' ? 0.8 : 1;
+  const L = (0.9 + power * 1.4) * (style === 'cola' ? 1.4 : style === 'firework' ? 0.8 : 1);
+  const W = Math.max(0.1, r * 0.95);
+  ctx.save();
+  ctx.globalCompositeOperation = steamy ? 'source-over' : 'lighter';
   for (const fy of ys) {
-    for (const [c, l, w] of layers) {
-      ctx.fillStyle = c;
+    // Soft outer glow.
+    const glow = ctx.createRadialGradient(fx - L * 0.25, fy, 0, fx - L * 0.25, fy, L * 0.9);
+    glow.addColorStop(0, `rgba(${pal.glow},${steamy ? 0.25 : 0.5})`);
+    glow.addColorStop(1, `rgba(${pal.glow},0)`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(fx - L * 1.2, fy - L * 0.9, L * 1.9, L * 1.8);
+    // Flickering tongues of flame.
+    for (let k = 0; k < 3; k++) {
+      const flick = 0.75 + 0.25 * Math.sin(time * (47 + k * 13) + k * 2.1) + 0.12 * Math.sin(time * 91 + k);
+      const tl = L * flick * (1 - k * 0.18);
+      const tw = W * (1.1 - k * 0.25);
+      const wob = Math.sin(time * 33 + k * 1.7) * tw * 0.25;
+      ctx.fillStyle = k === 0 ? `rgba(${pal.glow},0.55)` : k === 1 ? `rgba(${pal.mid},0.75)` : `rgba(${pal.core},0.95)`;
       ctx.beginPath();
-      ctx.moveTo(fx, fy - w * size);
-      ctx.quadraticCurveTo(fx - l * f * 0.6 * size, fy - w * 0.8 * size, fx - l * f * size, fy);
-      ctx.quadraticCurveTo(fx - l * f * 0.6 * size, fy + w * 0.8 * size, fx, fy + w * size);
+      ctx.moveTo(fx + 0.02, fy - tw);
+      ctx.bezierCurveTo(fx - tl * 0.35, fy - tw * 1.1, fx - tl * 0.75, fy - tw * 0.4 + wob, fx - tl, fy + wob);
+      ctx.bezierCurveTo(fx - tl * 0.75, fy + tw * 0.4 + wob, fx - tl * 0.35, fy + tw * 1.1, fx + 0.02, fy + tw);
       ctx.closePath();
       ctx.fill();
     }
+    // Shock diamonds in a strong exhaust.
+    if (!steamy && power > 0.45) {
+      const n = power > 0.75 ? 4 : 3;
+      for (let i = 1; i <= n; i++) {
+        const cx = fx - (i / (n + 1)) * L * 0.95;
+        const dw = W * 0.55 * (1 - i / (n + 2));
+        const dl = L * 0.08;
+        ctx.fillStyle = `rgba(${pal.core},${0.85 - i * 0.12})`;
+        ctx.beginPath();
+        ctx.moveTo(cx + dl, fy);
+        ctx.lineTo(cx, fy - dw);
+        ctx.lineTo(cx - dl, fy);
+        ctx.lineTo(cx, fy + dw);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
   }
+  ctx.restore();
 }
 
 function drawGliderBack(ctx: CanvasRenderingContext2D, style: GliderStyle, color: string, span: number, pose: PandaPose) {

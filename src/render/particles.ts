@@ -1,6 +1,6 @@
 import type { Camera } from './camera';
 
-export type ParticleKind = 'puff' | 'spark' | 'flame' | 'smoke' | 'text' | 'confetti';
+export type ParticleKind = 'puff' | 'spark' | 'flame' | 'smoke' | 'text' | 'confetti' | 'ember' | 'ring';
 
 export interface Particle {
   kind: ParticleKind;
@@ -81,8 +81,9 @@ export class Particles {
       switch (p.kind) {
         case 'puff':
         case 'smoke': {
-          const r = p.size * ppm * (1.6 - t * 0.8);
-          ctx.globalAlpha = t * (p.kind === 'smoke' ? 0.35 : 0.8);
+          // Smoke billows: it keeps growing as it fades.
+          const r = p.size * ppm * (p.kind === 'smoke' ? 0.8 + (1 - t) * 2.6 : 1.6 - t * 0.8);
+          ctx.globalAlpha = t * (p.kind === 'smoke' ? 0.32 : 0.8);
           ctx.fillStyle = p.color;
           ctx.beginPath();
           ctx.arc(x, y, Math.max(1, r), 0, Math.PI * 2);
@@ -90,12 +91,39 @@ export class Particles {
           break;
         }
         case 'flame': {
-          const r = p.size * ppm * (0.4 + t * 0.8);
-          ctx.globalAlpha = t;
-          ctx.fillStyle = t > 0.6 ? '#fff4b0' : t > 0.3 ? '#ffb238' : '#ff5a2a';
+          // Additive exhaust: white-hot when fresh, cooling through orange to red.
+          const r = Math.max(1.5, p.size * ppm * (0.5 + (1 - t) * 1.6));
+          ctx.globalCompositeOperation = 'lighter';
+          const hot = p.color === 'ion' ? ['170,225,255', '80,150,255', '40,80,220'] : ['255,245,200', '255,170,60', '230,70,30'];
+          const c = t > 0.65 ? hot[0] : t > 0.35 ? hot[1] : hot[2];
+          ctx.fillStyle = `rgba(${c},${0.25 + t * 0.55})`;
           ctx.beginPath();
-          ctx.arc(x, y, Math.max(1, r), 0, Math.PI * 2);
+          ctx.arc(x, y, r, 0, Math.PI * 2);
           ctx.fill();
+          ctx.fillStyle = `rgba(${hot[0]},${t * 0.5})`;
+          ctx.beginPath();
+          ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+          break;
+        }
+        case 'ember': {
+          const r = Math.max(1, p.size * ppm);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = t;
+          ctx.fillStyle = p.color;
+          ctx.fillRect(x - r, y - r, r * 2, r * 2);
+          ctx.globalCompositeOperation = 'source-over';
+          break;
+        }
+        case 'ring': {
+          const r = Math.max(2, p.size * ppm * (1.6 - t));
+          ctx.globalAlpha = t;
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = Math.max(1.5, 0.12 * ppm);
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.stroke();
           break;
         }
         case 'spark':

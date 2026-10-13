@@ -7,7 +7,19 @@ import { mulberry32 } from '../core/rng';
  * into an offscreen sprite and cached per size bucket, so a whole forest costs
  * a handful of drawImage calls per frame.
  */
-export type TreeKind = 'pine' | 'snowpine' | 'oak' | 'birch' | 'cherry' | 'bamboo' | 'dead' | 'bush';
+export type TreeKind =
+  | 'pine'
+  | 'snowpine'
+  | 'oak'
+  | 'birch'
+  | 'cherry'
+  | 'bamboo'
+  | 'dead'
+  | 'bush'
+  | 'cactus'
+  | 'charred'
+  | 'palm'
+  | 'shrub';
 
 /** Natural height of each kind in metres (before per-tree variation). */
 export const TREE_HEIGHT: Record<TreeKind, number> = {
@@ -19,6 +31,10 @@ export const TREE_HEIGHT: Record<TreeKind, number> = {
   bamboo: 13,
   dead: 7,
   bush: 1.8,
+  cactus: 5,
+  charred: 7,
+  palm: 9,
+  shrub: 1.4,
 };
 
 export const VARIANTS = 12;
@@ -440,6 +456,117 @@ function bush(ctx: CanvasRenderingContext2D, r: Rand) {
   }
 }
 
+/** Saguaro: a ribbed trunk with upturned arms. */
+function cactus(ctx: CanvasRenderingContext2D, r: Rand) {
+  const green = jitter(hexToRgb('#4f8f4a'), r, 0.2);
+  const w = 0.11;
+  const top = 0.85 + r() * 0.15;
+  const arms: { y: number; side: number; len: number; up: number }[] = [];
+  const n = 1 + Math.floor(r() * 3);
+  for (let i = 0; i < n; i++) arms.push({ y: 0.3 + r() * 0.3, side: i % 2 ? 1 : -1, len: 0.14 + r() * 0.08, up: 0.18 + r() * 0.2 });
+  const capsule = (x0: number, y0: number, x1: number, y1: number, rad: number) => {
+    ctx.beginPath();
+    limb(ctx, x0, y0, x1, y1, rad, rad);
+    ctx.fill();
+    ctx.beginPath();
+    blob(ctx, x1, y1, rad);
+    ctx.fill();
+  };
+  for (const [color, dw] of [
+    [shade(green, -0.25), 0],
+    [green, -0.025],
+  ] as const) {
+    ctx.fillStyle = rgb(color);
+    capsule(0, 0, 0, top - w, w + dw);
+    for (const a of arms) {
+      const ax = a.side * (w + a.len);
+      capsule(0, a.y, ax, a.y, w * 0.75 + dw);
+      capsule(ax, a.y, ax, a.y + a.up, w * 0.75 + dw);
+    }
+  }
+  // Ribs and a flower on top.
+  ctx.strokeStyle = rgb(shade(green, 0.2));
+  ctx.lineWidth = 0.01;
+  ctx.beginPath();
+  for (const dx of [-0.04, 0.03]) {
+    ctx.moveTo(dx, 0.02);
+    ctx.lineTo(dx, top - w * 1.2);
+  }
+  ctx.stroke();
+  if (r() < 0.5) {
+    ctx.fillStyle = '#ff6fa8';
+    ctx.beginPath();
+    blob(ctx, 0, top - 0.01, 0.035);
+    ctx.fill();
+  }
+}
+
+/** A burnt tree with smouldering tips. */
+function charred(ctx: CanvasRenderingContext2D, r: Rand) {
+  const tips: Tip[] = [];
+  ctx.fillStyle = '#2b2326';
+  ctx.beginPath();
+  branch(ctx, r, 0, 0, Math.PI / 2 + (r() - 0.5) * 0.3, 0.34, 0.05, 4, 0.5, tips);
+  ctx.fill();
+  ctx.fillStyle = '#ff7a3d';
+  ctx.beginPath();
+  for (const t of tips) if (r() < 0.4) blob(ctx, t.x, t.y, 0.012);
+  ctx.fill();
+}
+
+/** Oasis palm: a curved trunk and drooping fronds. */
+function palm(ctx: CanvasRenderingContext2D, r: Rand) {
+  const lean = (r() - 0.5) * 0.4;
+  const tx = lean * 0.6;
+  const ty = 0.82;
+  ctx.fillStyle = '#8a6a44';
+  for (let i = 0; i < 9; i++) {
+    const t0 = i / 9;
+    const t1 = (i + 1) / 9;
+    const x0 = lean * 0.6 * t0 * t0;
+    const x1 = lean * 0.6 * t1 * t1;
+    ctx.beginPath();
+    limb(ctx, x0, t0 * ty, x1, t1 * ty - 0.01, 0.035 - t0 * 0.01, 0.033 - t1 * 0.01);
+    ctx.fill();
+  }
+  const frond = jitter(hexToRgb('#4f9a3a'), r, 0.2);
+  for (let k = 0; k < 7; k++) {
+    const a = Math.PI / 2 + (k - 3) * 0.48 + (r() - 0.5) * 0.2;
+    const len = 0.32 + r() * 0.08;
+    ctx.fillStyle = rgb(k % 2 ? frond : shade(frond, -0.15));
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    const ex = tx + Math.cos(a) * len;
+    const ey = ty + Math.sin(a) * len * 0.6 - Math.abs(Math.cos(a)) * 0.15;
+    ctx.quadraticCurveTo(tx + Math.cos(a) * len * 0.6, ty + 0.12, ex, ey);
+    ctx.quadraticCurveTo(tx + Math.cos(a) * len * 0.5, ty + 0.03, tx, ty);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#6b4a2f';
+  ctx.beginPath();
+  blob(ctx, tx - 0.02, ty - 0.02, 0.025);
+  blob(ctx, tx + 0.02, ty - 0.03, 0.025);
+  ctx.fill();
+}
+
+/** Dry desert tumbleweed shrub. */
+function shrub(ctx: CanvasRenderingContext2D, r: Rand) {
+  ctx.strokeStyle = '#8a6a44';
+  ctx.lineWidth = 0.035;
+  ctx.beginPath();
+  for (let i = 0; i < 14; i++) {
+    const a = Math.PI * (0.1 + r() * 0.8);
+    const len = 0.5 + r() * 0.5;
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(Math.cos(a) * len * 0.4, Math.sin(a) * len * 0.6, Math.cos(a) * len, Math.sin(a) * len * 0.7);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#b5a05a';
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) blob(ctx, (r() - 0.5) * 1.2, 0.3 + r() * 0.35, 0.08);
+  ctx.fill();
+}
+
 const GROWERS: Record<TreeKind, Grower> = {
   pine: (ctx, r, px) => conifer(ctx, r, px, false),
   snowpine: (ctx, r, px) => conifer(ctx, r, px, true),
@@ -475,4 +602,8 @@ const GROWERS: Record<TreeKind, Grower> = {
   bamboo: (ctx, r, px) => bamboo(ctx, r, px),
   dead: (ctx, r) => deadTree(ctx, r),
   bush: (ctx, r) => bush(ctx, r),
+  cactus: (ctx, r) => cactus(ctx, r),
+  charred: (ctx, r) => charred(ctx, r),
+  palm: (ctx, r) => palm(ctx, r),
+  shrub: (ctx, r) => shrub(ctx, r),
 };

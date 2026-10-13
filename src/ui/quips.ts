@@ -28,6 +28,8 @@ const LINES = {
     rocket: ['What could possibly go wrong?', 'Strapping a rocket to myself. Totally normal.', 'Fire goes out the back, right?'],
     fuel: ['Mmm, fuel. Not for drinking.', 'More boom juice!', 'This tank sloshes with potential.'],
     sensor: ['Ooh, a gadget!', 'Science! In my cockpit!', 'Now I know things. Flying things.'],
+    weapon: ['Pew pew!', 'Birds beware.', 'I come in peace. Mostly.'],
+    gadget: ['Shiny and useful!', 'Accessorising for success.', 'Every pocket counts.'],
   } satisfies Record<ShopCategory, string[]>,
   equip: ['Swapping gear. Very tactical.', 'New day, new build.', 'I have a plan. Sort of.'],
   unequip: ['Who needs instruments anyway?', 'Flying by feel. Bold.', 'Less clutter, more fluff.'],
@@ -43,9 +45,14 @@ const LINES = {
   ring: ['Wooosh!', 'Speed ring!'],
   balloon: ['Pop!', 'Boing!'],
   splash: ['SPLOOSH!', 'Skippy skip!', 'Pandas can swim, right?'],
+  lava: ['HOT HOT HOT!', 'My toes!', 'Spicy floor!'],
+  hit: ['Hey!', 'Shoo!', 'Rude!', 'My coins!'],
+  kill: ['Gotcha!', 'Bullseye!', 'Take that!'],
+  shield: ['Bubble saves the day!', 'Boing-ploop!'],
+  thermal: ['Wheee, hot air!', 'Going up!'],
   lastFlap: ['Arms… so… tired…', 'That was my last flap!'],
   done: ['Again! Again!', 'Nailed it. Mostly.', 'Where am I?'],
-  goal: ['PARADISE! I made it!', 'So… much… bamboo!'],
+  goal: ['I made it!', 'So… much… bamboo!'],
 };
 
 export type QuipKey = Exclude<keyof typeof LINES, 'buy' | 'results'>;

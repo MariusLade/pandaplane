@@ -1,44 +1,9 @@
-import { clamp, hexToRgb, invLerp, smoothstep, type RGB } from '../core/math';
+import { clamp, invLerp, smoothstep } from '../core/math';
 import { fbm1, hash, mulberry32 } from '../core/rng';
-import { GOAL_DISTANCE, MOUNTAIN_BEND, MOUNTAIN_FOOT, MOUNTAIN_PEAK, MOUNTAIN_SLOPE } from './constants';
+import { MOUNTAIN_BEND, MOUNTAIN_FOOT, MOUNTAIN_PEAK, MOUNTAIN_SLOPE } from './constants';
+import { VALLEY, type Biome, type MapDef, type PondKind } from './maps';
 
-export type Decor = 'snowpine' | 'pine' | 'flowers' | 'bamboo';
-
-export interface Biome {
-  name: string;
-  start: number;
-  ground: RGB;
-  groundDeep: RGB;
-  lip: RGB;
-  hills: RGB;
-  decor: Decor;
-}
-
-const biome = (
-  name: string,
-  start: number,
-  ground: string,
-  groundDeep: string,
-  lip: string,
-  hills: string,
-  decor: Decor,
-): Biome => ({
-  name,
-  start,
-  ground: hexToRgb(ground),
-  groundDeep: hexToRgb(groundDeep),
-  lip: hexToRgb(lip),
-  hills: hexToRgb(hills),
-  decor,
-});
-
-export const BIOMES: Biome[] = [
-  biome('Snowy Peaks', -Infinity, '#e3edf8', '#9fb2cc', '#ffffff', '#b8c9e2', 'snowpine'),
-  biome('Pine Valley', 1400, '#9cc386', '#55794f', '#d6ecc4', '#8fb3a0', 'pine'),
-  biome('Flower Meadows', 3000, '#86cf62', '#3f8a3a', '#b4ec86', '#97c98c', 'flowers'),
-  biome('Bamboo Forest', 4800, '#62b25a', '#2e6b35', '#93d86e', '#7fb88a', 'bamboo'),
-  biome('Panda Paradise', GOAL_DISTANCE - 200, '#a5e06a', '#4f9a3c', '#e4f79a', '#b5d58a', 'bamboo'),
-];
+export type { Biome } from './maps';
 
 const BIOME_BLEND = 220;
 
@@ -48,15 +13,19 @@ export interface BiomeSample {
   t: number;
 }
 
-export function biomeAt(x: number): BiomeSample {
+/** Which biome(s) x falls in, with a blend factor across boundaries. */
+export function biomeIn(biomes: Biome[], x: number): BiomeSample {
   let i = 0;
-  while (i + 1 < BIOMES.length && x >= BIOMES[i + 1].start) i++;
-  const next = BIOMES[i + 1];
+  while (i + 1 < biomes.length && x >= biomes[i + 1].start) i++;
+  const next = biomes[i + 1];
   if (next && x > next.start - BIOME_BLEND) {
-    return { a: BIOMES[i], b: next, t: smoothstep(invLerp(next.start - BIOME_BLEND, next.start, x)) };
+    return { a: biomes[i], b: next, t: smoothstep(invLerp(next.start - BIOME_BLEND, next.start, x)) };
   }
-  return { a: BIOMES[i], b: BIOMES[i], t: 0 };
+  return { a: biomes[i], b: biomes[i], t: 0 };
 }
+
+/** The dominant biome at x. */
+export const mainBiome = (s: BiomeSample): Biome => (s.t > 0.5 ? s.b : s.a);
 
 export type PickupKind = 'coin' | 'bigcoin' | 'ring' | 'balloon';
 
@@ -111,15 +80,27 @@ export function mountainDistanceForHeight(h: number): number {
  * same every day; pickups depend on `pickupSeed`, so they move around between
  * flights.
  */
-export type Surface = 'ground' | 'ice' | 'water';
+export type Surface = 'ground' | PondKind;
 
-/** A pond filling a dip in the hills: water, or ice in the snowy biome. */
+/** A pond filling a dip in the hills: water, ice or lava depending on the biome. */
 export interface Pond {
   x0: number;
   x1: number;
   level: number;
-  kind: 'ice' | 'water';
+  kind: PondKind;
 }
+
+/** A column of rising hot air. */
+export interface Thermal {
+  x: number;
+  halfWidth: number;
+  /** Updraft speed at the core, m/s. */
+  strength: number;
+  /** How high above the ground it reaches. */
+  top: number;
+}
+
+const THERMAL_CELL = 170;
 
 const POND_CELL = 280;
 const POND_MAX_HALF_WIDTH = 90;
@@ -127,21 +108,83 @@ const POND_MAX_HALF_WIDTH = 90;
 export class World {
   private chunks = new Map<number, Pickup[]>();
   private ponds = new Map<number, Pond | null>();
+  private thermals = new Map<number, Thermal | null>();
+  readonly seed: number;
 
   constructor(
-    readonly seed: number,
+    seed: number,
     readonly pickupSeed: number,
-  ) {}
+    readonly map: MapDef = VALLEY,
+  ) {
+    this.seed = seed + map.seedSalt;
+  }
 
-  /** Rolling hills beyond the launch site. */
+  biomeAt(x: number): BiomeSample {
+    return biomeIn(this.map.biomes, x);
+  }
+
+  /** Rolling hills (or terraced mesas) beyond the launch site. */
   private valley(x: number): number {
     const s = this.seed;
+    const t = this.map.terrain;
     // Hills grow taller the further you go, so later flights need altitude.
-    const amp = 10 + Math.min(34, x / 180);
+    const amp = t.amp0 + Math.min(t.ampMax, x / t.ampGrowth);
     const broad = fbm1(s, x / 260, 4) * amp;
-    const ridge = Math.max(0, fbm1(s + 99, x / 620, 2)) * amp * 1.6;
-    const detail = fbm1(s + 7, x / 34, 2) * 1.6;
-    return broad + ridge + detail;
+    const ridge = Math.max(0, fbm1(s + 99, x / 620, 2)) * amp * t.ridge;
+    let v = broad + ridge;
+    if (t.terrace > 0) {
+      // Flat mesa tops joined by steep cliffs.
+      const k = v / t.terrace;
+      const f = k - Math.floor(k);
+      v = (Math.floor(k) + smoothstep(clamp((f - 0.62) / 0.38, 0, 1))) * t.terrace;
+    }
+    return v + fbm1(s + 7, x / 34, 2) * t.detail;
+  }
+
+  /** Vertical wind at a point (thermals), m/s. */
+  updraft(x: number, y: number): number {
+    const c = Math.floor(x / THERMAL_CELL);
+    let w = 0;
+    for (let k = c - 1; k <= c + 1; k++) {
+      const th = this.thermal(k);
+      if (!th) continue;
+      const d = Math.abs(x - th.x) / th.halfWidth;
+      if (d >= 1) continue;
+      const h = y - this.rawGround(th.x);
+      if (h < -5 || h > th.top) continue;
+      const fade = h > th.top * 0.7 ? 1 - (h - th.top * 0.7) / (th.top * 0.3) : 1;
+      w += th.strength * (1 - d * d) * fade;
+    }
+    return w;
+  }
+
+  thermalsIn(x0: number, x1: number): Thermal[] {
+    const out: Thermal[] = [];
+    for (let k = Math.floor(x0 / THERMAL_CELL) - 1; k <= Math.floor(x1 / THERMAL_CELL) + 1; k++) {
+      const th = this.thermal(k);
+      if (th && th.x + th.halfWidth >= x0 && th.x - th.halfWidth <= x1) out.push(th);
+    }
+    return out;
+  }
+
+  private thermal(cell: number): Thermal | null {
+    let th = this.thermals.get(cell);
+    if (th !== undefined) return th;
+    th = null;
+    if (cell >= 2) {
+      const x = (cell + 0.2 + hash(this.seed, cell, 601) * 0.6) * THERMAL_CELL;
+      const odds = mainBiome(this.biomeAt(x)).thermals ?? 0;
+      if (hash(this.seed, cell, 602) < odds) {
+        th = {
+          x,
+          halfWidth: 9 + hash(this.seed, cell, 603) * 12,
+          strength: 7 + hash(this.seed, cell, 604) * 9,
+          top: 120 + hash(this.seed, cell, 605) * 260,
+        };
+      }
+    }
+    this.thermals.set(cell, th);
+    return th;
   }
 
   /** Walkable surface height: the terrain, or a pond's surface where one fills a dip. */
@@ -210,9 +253,7 @@ export class World {
       if (x1 - minX > POND_MAX_HALF_WIDTH) return null;
     }
     if (x1 - x0 < 8) return null;
-    const b2 = biomeAt(minX);
-    const biome = b2.t > 0.5 ? b2.b : b2.a;
-    return { x0, x1, level, kind: biome.decor === 'snowpine' ? 'ice' : 'water' };
+    return { x0, x1, level, kind: mainBiome(this.biomeAt(minX)).pond };
   }
 
   /** Terrain height ignoring ponds. */

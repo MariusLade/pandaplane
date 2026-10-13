@@ -138,6 +138,47 @@ export class Sound {
     this.burst(0.35 + v * 0.4, 1800, 0.3 + v * 0.4, 'highpass');
     this.tone(300, 0.2, 'sine', 0.12, 0.02, 120);
   }
+  shoot(style: string): void {
+    switch (style) {
+      case 'laser':
+        this.tone(1400, 0.12, 'sawtooth', 0.06, 0, 300);
+        break;
+      case 'crackers':
+        this.burst(0.12, 1200, 0.25, 'bandpass');
+        break;
+      case 'bees':
+        this.tone(220, 0.08, 'sawtooth', 0.04, 0, 260);
+        break;
+      case 'snow':
+        this.burst(0.04, 3000, 0.12, 'highpass');
+        break;
+      case 'sling':
+        this.tone(500, 0.1, 'triangle', 0.1, 0, 200);
+        break;
+      default:
+        this.tone(900, 0.05, 'square', 0.05, 0, 500);
+    }
+  }
+  hit(): void {
+    this.tone(300, 0.06, 'square', 0.06, 0, 200);
+  }
+  boom(): void {
+    this.burst(0.45, 500, 0.6);
+    this.tone(90, 0.35, 'sine', 0.3, 0, 40);
+  }
+  enemyDown(): void {
+    this.burst(0.2, 1500, 0.3, 'bandpass');
+    this.tone(660, 0.08, 'square', 0.07, 0.05);
+    this.tone(990, 0.12, 'square', 0.07, 0.12);
+  }
+  hurt(): void {
+    this.tone(260, 0.25, 'sawtooth', 0.12, 0, 110);
+    this.burst(0.15, 800, 0.3);
+  }
+  sizzle(): void {
+    this.burst(0.6, 3500, 0.35, 'highpass');
+    this.tone(120, 0.3, 'sine', 0.15, 0, 60);
+  }
   honk(): void {
     this.tone(440, 0.18, 'square', 0.09);
     this.tone(330, 0.18, 'square', 0.07);

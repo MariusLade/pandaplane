@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildRamp, rampAt } from '../src/game/ramp';
 import { RAMPS } from '../src/game/upgrades';
-import { biomeAt, BIOMES, mountainHeight, World } from '../src/game/world';
+import { VALLEY } from '../src/game/maps';
+import { mountainHeight, World } from '../src/game/world';
 import { fbm1, hash, mulberry32 } from '../src/core/rng';
 
 describe('rng', () => {
@@ -63,9 +64,9 @@ describe('world', () => {
   });
 
   it('walks through every biome in order', () => {
-    const names = BIOMES.map((b) => b.name);
-    expect(biomeAt(0).a.name).toBe(names[0]);
-    expect(biomeAt(1e6).a.name).toBe(names[names.length - 1]);
+    const names = VALLEY.biomes.map((b) => b.name);
+    expect(world.biomeAt(0).a.name).toBe(names[0]);
+    expect(world.biomeAt(1e6).a.name).toBe(names[names.length - 1]);
   });
 });
 

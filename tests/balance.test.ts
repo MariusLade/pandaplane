@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { autopilot } from '../src/game/autopilot';
-import { GOAL_DISTANCE } from '../src/game/constants';
+import { CANYON, VALLEY, type MapDef } from '../src/game/maps';
 import { Flight } from '../src/game/flight';
 import {
   CATALOG,
@@ -13,8 +13,8 @@ import {
 } from '../src/game/upgrades';
 import { World } from '../src/game/world';
 
-function fly(gear: Loadout, seed = 1234, day = 1) {
-  const f = new Flight(new World(seed, seed + day), gear);
+function fly(gear: Loadout, seed = 1234, day = 1, map: MapDef = VALLEY) {
+  const f = new Flight(new World(seed, seed + day, map), gear);
   f.start();
   const dt = 1 / 120;
   while (f.phase !== 'done') f.step(dt, autopilot(f));
@@ -23,11 +23,11 @@ function fly(gear: Loadout, seed = 1234, day = 1) {
 
 /** Sensible builds at increasing budgets. */
 const BUILDS: { name: string; gear: Equipped }[] = [
-  { name: 'starter', gear: { ramp: 'bump', sled: 'box', glider: 'none', rocket: 'none', fuel: 'thimble' } },
-  { name: 'early', gear: { ramp: 'wooden', sled: 'plastic', glider: 'leaf', rocket: 'firework', fuel: 'bottle' } },
-  { name: 'mid', gear: { ramp: 'tall', sled: 'racing', glider: 'hang', rocket: 'model', fuel: 'jerry' } },
-  { name: 'late', gear: { ramp: 'mega', sled: 'bobsled', glider: 'carbon', rocket: 'turbo', fuel: 'barrel' } },
-  { name: 'endgame', gear: { ramp: 'mountain', sled: 'hover', glider: 'albatross', rocket: 'space', fuel: 'reactor' } },
+  { name: 'starter', gear: { ramp: 'bump', sled: 'box', glider: 'none', rocket: 'none', fuel: 'thimble', weapon: 'none' } },
+  { name: 'early', gear: { ramp: 'wooden', sled: 'plastic', glider: 'leaf', rocket: 'firework', fuel: 'bottle', weapon: 'none' } },
+  { name: 'mid', gear: { ramp: 'tall', sled: 'racing', glider: 'hang', rocket: 'model', fuel: 'jerry', weapon: 'none' } },
+  { name: 'late', gear: { ramp: 'mega', sled: 'bobsled', glider: 'carbon', rocket: 'turbo', fuel: 'barrel', weapon: 'none' } },
+  { name: 'endgame', gear: { ramp: 'mountain', sled: 'hover', glider: 'albatross', rocket: 'space', fuel: 'reactor', weapon: 'none' } },
 ];
 
 const atFraction = (t: number) =>
@@ -57,7 +57,7 @@ describe('balance', () => {
   });
 
   it('the endgame build can reach the goal', () => {
-    expect(results[results.length - 1].r.distance).toBeGreaterThan(GOAL_DISTANCE);
+    expect(results[results.length - 1].r.distance).toBeGreaterThan(VALLEY.goal);
   });
 
   it('no build breaks physics', () => {
@@ -67,6 +67,7 @@ describe('balance', () => {
   it('every item is a usable upgrade over the starter gear', () => {
     const base = fly(atFraction(0)).distance;
     for (const c of CATEGORIES) {
+      if (c === 'weapon') continue;
       CATALOG[c].forEach((_, i) => {
         if (i === 0) return;
         const idx = Object.fromEntries(CATEGORIES.map((k) => [k, 0])) as Record<Category, number>;
@@ -77,6 +78,21 @@ describe('balance', () => {
         expect(d, `${c} #${i}`).toBeGreaterThan(base * 0.9);
       });
     }
+  });
+
+  it('the canyon is harder, but its own endgame gear can cross it', () => {
+    const valleyEnd = loadoutFor(BUILDS[BUILDS.length - 1].gear);
+    const canyonValleyGear = fly(valleyEnd, 1234, 1, CANYON);
+    const best = loadoutFor(
+      { ramp: 'volcano', sled: 'obsidian', glider: 'phoenix', rocket: 'magma', fuel: 'lavacell', weapon: 'laser' },
+      [],
+      ['shield', 'suit'],
+    );
+    const canyonBest = fly(best, 1234, 1, CANYON);
+    console.log(`canyon with valley endgame gear: ${canyonValleyGear.distance.toFixed(0)} m, kills ${canyonValleyGear.kills}`);
+    console.log(`canyon with canyon endgame gear: ${canyonBest.distance.toFixed(0)} m, kills ${canyonBest.kills}`);
+    expect(canyonValleyGear.distance).toBeLessThan(CANYON.goal);
+    expect(canyonBest.distance).toBeGreaterThan(CANYON.goal);
   });
 
   it('is deterministic', () => {

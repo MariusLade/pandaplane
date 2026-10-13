@@ -1,8 +1,11 @@
 import { storage } from '../core/storage';
 import { EMPTY_RECORDS, type Records } from './economy';
+import { MAP_ORDER, type MapId } from './maps';
 import {
   CATALOG,
   CATEGORIES,
+  GADGETS,
+  MAX_GADGETS,
   SHOP_CATEGORIES,
   START_EQUIPPED,
   equipSensor,
@@ -10,6 +13,12 @@ import {
   type Equipped,
   type Owned,
 } from './upgrades';
+
+export interface MapProgress {
+  best: Records;
+  goalReached: boolean;
+  goalDay: number | null;
+}
 
 export interface SaveData {
   version: 2;
@@ -19,15 +28,20 @@ export interface SaveData {
   equipped: Equipped;
   /** Equipped sensor ids (several at once, no two sharing a slot). */
   sensors: string[];
-  best: Records;
+  /** Equipped gadget ids (up to MAX_GADGETS). */
+  gadgets: string[];
+  /** The map flights take place on. */
+  map: MapId;
+  unlocked: MapId[];
+  progress: Record<MapId, MapProgress>;
   worldSeed: number;
-  goalReached: boolean;
-  goalDay: number | null;
   totalEarned: number;
   muted: boolean;
 }
 
 const KEY = 'pandaplane.save';
+
+const freshProgress = (): MapProgress => ({ best: { ...EMPTY_RECORDS }, goalReached: false, goalDay: null });
 
 export function newSave(): SaveData {
   return {
@@ -37,21 +51,23 @@ export function newSave(): SaveData {
     owned: startOwned(),
     equipped: { ...START_EQUIPPED },
     sensors: [],
-    best: { ...EMPTY_RECORDS },
+    gadgets: [],
+    map: 'valley',
+    unlocked: ['valley'],
+    progress: { valley: freshProgress(), canyon: freshProgress() },
     worldSeed: (Math.random() * 2 ** 31) | 0,
-    goalReached: false,
-    goalDay: null,
     totalEarned: 0,
     muted: false,
   };
 }
 
 /** Version 1 saves stored a linear upgrade level per category. */
-function migrateV1(data: Record<string, unknown>): Partial<SaveData> {
+function migrateV1(data: Record<string, unknown>): Record<string, unknown> {
   const levels = (data.levels ?? {}) as Record<string, number>;
   const owned = startOwned();
   const equipped = { ...START_EQUIPPED };
   for (const c of CATEGORIES) {
+    if (c === 'weapon') continue;
     const list = CATALOG[c];
     const n = Math.min(list.length - 1, Math.max(0, levels[c] ?? 0));
     owned[c] = list.slice(0, n + 1).map((i) => i.id);
@@ -59,7 +75,7 @@ function migrateV1(data: Record<string, unknown>): Partial<SaveData> {
   }
   const { levels: _drop, ...rest } = data;
   void _drop;
-  return { ...(rest as Partial<SaveData>), version: 2, owned, equipped };
+  return { ...rest, version: 2, owned, equipped };
 }
 
 export function loadSave(): SaveData | null {
@@ -67,10 +83,11 @@ export function loadSave(): SaveData | null {
   if (!raw) return null;
   try {
     let data = JSON.parse(raw) as Record<string, unknown>;
-    if (data.version === 1) data = migrateV1(data) as Record<string, unknown>;
+    if (data.version === 1) data = migrateV1(data);
     if (data.version !== 2) return null;
     const fresh = newSave();
-    const loaded = data as unknown as Partial<SaveData>;
+    const loaded = data as unknown as Partial<SaveData> & { best?: Records; goalReached?: boolean; goalDay?: number | null };
+
     const owned = startOwned();
     for (const c of SHOP_CATEGORIES) {
       const valid = new Set(CATALOG[c].map((i) => i.id));
@@ -83,7 +100,43 @@ export function loadSave(): SaveData | null {
     }
     let sensors: string[] = [];
     for (const id of loaded.sensors ?? []) if (owned.sensor.includes(id)) sensors = equipSensor(sensors, id).sensors;
-    return { ...fresh, ...loaded, version: 2, owned, equipped, sensors, best: { ...fresh.best, ...loaded.best } };
+    const gadgets = (loaded.gadgets ?? [])
+      .filter((id) => owned.gadget.includes(id) && GADGETS.some((g) => g.id === id))
+      .slice(0, MAX_GADGETS);
+
+    // Older saves kept a single set of records for the first map.
+    const progress = { ...fresh.progress };
+    for (const id of MAP_ORDER) {
+      const p = loaded.progress?.[id];
+      if (p) progress[id] = { ...freshProgress(), ...p, best: { ...EMPTY_RECORDS, ...p.best } };
+    }
+    if (!loaded.progress && loaded.best) {
+      progress.valley = {
+        best: { ...EMPTY_RECORDS, ...loaded.best },
+        goalReached: !!loaded.goalReached,
+        goalDay: loaded.goalDay ?? null,
+      };
+    }
+    const unlocked = MAP_ORDER.filter(
+      (id, i) => id === 'valley' || loaded.unlocked?.includes(id) || progress[MAP_ORDER[i - 1]]?.goalReached,
+    );
+    const map = loaded.map && unlocked.includes(loaded.map) ? loaded.map : 'valley';
+
+    return {
+      ...fresh,
+      money: loaded.money ?? 0,
+      day: loaded.day ?? 1,
+      worldSeed: loaded.worldSeed ?? fresh.worldSeed,
+      totalEarned: loaded.totalEarned ?? 0,
+      muted: loaded.muted ?? false,
+      owned,
+      equipped,
+      sensors,
+      gadgets,
+      map,
+      unlocked,
+      progress,
+    };
   } catch {
     return null;
   }

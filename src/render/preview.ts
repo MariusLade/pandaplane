@@ -3,7 +3,9 @@ import {
   FUELS,
   RAMPS,
   type FuelItem,
+  type GadgetItem,
   type Item,
+  type WeaponItem,
   type Loadout,
   type RampItem,
   type SensorItem,
@@ -163,6 +165,8 @@ export function drawItemPreview(
   if (category === 'ramp') return drawRampPreview(ctx, w, h, item as RampItem);
   if (category === 'fuel') return drawFuelPreview(ctx, w, h, item as FuelItem);
   if (category === 'sensor') return drawSensorPreview(ctx, w, h, item as SensorItem, time);
+  if (category === 'weapon') return drawWeaponPreview(ctx, w, h, item as WeaponItem, time);
+  if (category === 'gadget') return badge(ctx, w / 2, h / 2, Math.min(w, h) * 0.34, (item as GadgetItem).color, GADGET_ICON[(item as GadgetItem).style], time);
 
   // Show the item on its own: other categories fall back to their basics.
   const gear: Loadout = {
@@ -412,4 +416,97 @@ export function drawSensorRack(canvas: HTMLCanvasElement, sensors: SensorItem[],
   const cell = w / n;
   const r = Math.min(cell * 0.36, h * 0.32);
   sensors.forEach((item, i) => drawSensorGadget(ctx, item, cell * (i + 0.5), h / 2, r, time));
+}
+
+const WEAPON_ICON: Record<WeaponItem['style'], string> = {
+  none: '🐾',
+  peas: '🫛',
+  sling: '🌰',
+  crackers: '🧨',
+  bees: '🐝',
+  snow: '❄️',
+  laser: '🧐',
+};
+
+const GADGET_ICON: Record<GadgetItem['style'], string> = {
+  magnet: '🧲',
+  charm: '🍀',
+  belt: '🎒',
+  radar: '📡',
+  shield: '🫧',
+  helmet: '⛑️',
+  suit: '🧑‍🚒',
+};
+
+/** A round coloured badge with an icon, gently bobbing. */
+function badge(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string, icon: string, time: number) {
+  const bob = Math.sin(time * 2 + cx) * 2;
+  ctx.fillStyle = 'rgba(42,35,64,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r + 4, r * 0.8, r * 0.18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy + bob, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.beginPath();
+  ctx.arc(cx - r * 0.3, cy + bob - r * 0.35, r * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.font = `${Math.round(r * 1.1)}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#000';
+  ctx.fillText(icon, cx, cy + bob + r * 0.06);
+}
+
+/** Weapon badge with a little stream of projectiles. */
+function drawWeaponPreview(ctx: CanvasRenderingContext2D, w: number, h: number, item: WeaponItem, time: number) {
+  const r = Math.min(w, h) * 0.32;
+  const cx = w * 0.32;
+  const cy = h / 2;
+  if (item.rate > 0) {
+    if (item.hitscan) {
+      ctx.strokeStyle = `rgba(255,59,107,${0.5 + 0.5 * Math.sin(time * 12)})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx + r, cy);
+      ctx.lineTo(w - 6, cy);
+      ctx.stroke();
+    } else {
+      const n = Math.min(5, Math.ceil(item.rate));
+      for (let i = 0; i < n; i++) {
+        const t = (time * 0.8 + i / n) % 1;
+        const x = cx + r + t * (w - cx - r - 8);
+        const y = cy + (item.gravity ? t * t * h * 0.3 - t * h * 0.15 : item.homing ? Math.sin(t * 12 + i) * 6 : 0);
+        ctx.fillStyle = item.color;
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, item.blast ? 5 : 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }
+  badge(ctx, cx, cy, r, item.rate > 0 ? item.color : '#dfe3ef', WEAPON_ICON[item.style], time);
+}
+
+/** The hangar tile: worn gadgets side by side. */
+export function drawGadgetRack(canvas: HTMLCanvasElement, gadgets: GadgetItem[], time: number): void {
+  const s = setup(canvas);
+  if (!s) return;
+  const { ctx, w, h } = s;
+  if (!gadgets.length) {
+    ctx.fillStyle = 'rgba(42,35,64,0.45)';
+    ctx.font = '600 14px Fredoka, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Empty pockets', w / 2, h / 2 + 5);
+    return;
+  }
+  const cell = w / gadgets.length;
+  gadgets.forEach((g, i) => badge(ctx, cell * (i + 0.5), h / 2 - 3, Math.min(cell * 0.3, h * 0.3), g.color, GADGET_ICON[g.style], time));
 }
