@@ -42,6 +42,8 @@ const LINES = {
   coin: ['Shiny!', 'Ka-ching!', 'Mine!'],
   ring: ['Wooosh!', 'Speed ring!'],
   balloon: ['Pop!', 'Boing!'],
+  splash: ['SPLOOSH!', 'Skippy skip!', 'Pandas can swim, right?'],
+  lastFlap: ['Arms… so… tired…', 'That was my last flap!'],
   done: ['Again! Again!', 'Nailed it. Mostly.', 'Where am I?'],
   goal: ['PARADISE! I made it!', 'So… much… bamboo!'],
 };

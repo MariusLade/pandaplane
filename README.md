@@ -27,6 +27,15 @@ compared to what you have equipped.
   reading is hidden. Equip several at once, but only one per slot (speed,
   altitude, pitch, stall, fuel); the Wrist Computer bundles three slots.
 
+Many items also have a **perk** (purple badge in the shop): spring-loaded
+kickers (Bamboo Catapult, Spring Board), an icy ramp deck (Ice Chute), sleds
+that skim or bounce after landing (Frying Wok, Snow Surfboard, Bouncy Castle),
+a Propeller Beanie that brakes every fall, a Flying Carpet that never stalls,
+wings that flap when you press BOOST with an empty rocket (Feathered Wings,
+Dragon Wings), a Cola Geyser that dumps all its fizz at once, a Steam Kettle
+and Solar Panel that refill while you coast, an Afterburner that spools up to
+double thrust, and a Nitro Canister that boosts any rocket.
+
 Weight matters everywhere: a heavy build keeps its speed but sinks faster and
 accelerates slower.
 
@@ -57,8 +66,17 @@ Nothing is a bitmap or audio file — everything is generated at runtime:
   landscape is fixed per save, pickups reshuffle every day.
 - **Biomes**: Snowy Peaks → Pine Valley → Flower Meadows → Bamboo Forest →
   Panda Paradise, blended by distance (ground, decorations, sky tint).
-- **Scenery**: parallax mountain ranges with snow caps, clouds, stars at high
-  altitude, trees / bamboo / flowers placed by hash.
+- **Trees**: grown from seeds — layered conifers (snowy or not), recursively
+  branching oaks, birches and cherry blossoms, bare winter trees, bamboo groves
+  and bushes. Each is rendered once into a cached sprite sized to its exact
+  bounds, and sways in the wind. Trees appear in groves and clearings, with a
+  back row half-hidden behind the ridge for depth.
+- **Ground**: wavy rock strata, embedded pebbles, grass tufts, snow glitter,
+  rocks, flowers, mushrooms, snowmen and stone lanterns.
+- **Ponds**: dips in the hills fill with water (or ice in the snow). Ice is
+  slippery; land fast and shallow on water and you skip like a stone.
+- **Scenery**: parallax mountain ranges with snow caps and forested ridges,
+  clouds, and stars at high altitude.
 - **Pickups**: coin trails, big coins, boost rings and balloons, generated per
   60 m chunk.
 - **Ramps**: laid along the mountain profile, ending in a kicker curve

@@ -32,7 +32,17 @@ export interface FlightInput {
   boost: boolean;
 }
 
-export type FlightEventType = 'launch' | 'coin' | 'bigcoin' | 'ring' | 'balloon' | 'impact' | 'goal' | 'done';
+export type FlightEventType =
+  | 'launch'
+  | 'coin'
+  | 'bigcoin'
+  | 'ring'
+  | 'balloon'
+  | 'impact'
+  | 'splash'
+  | 'flap'
+  | 'goal'
+  | 'done';
 
 export interface FlightEvent {
   type: FlightEventType;
@@ -62,6 +72,10 @@ export function liftCoefficient(alpha: number, stall: number): number {
   return lerp(peak * 0.75, flat, t);
 }
 
+/** Seconds of coasting before refilling gear starts to recharge. */
+const REGEN_DELAY = 1.5;
+/** Refilling gear can regain at most this many full tanks per flight. */
+const REGEN_REFILLS = 2;
 const STOP_SPEED = 0.7;
 const STOP_HOLD = 0.6;
 const MAX_GROUND_TIME = 30;
@@ -95,6 +109,14 @@ export class Flight {
   /** PANDA_MASS / mass: how much forces are diluted by extra weight. */
   private readonly lightness: number;
   boosting = false;
+  /** Wing beats left (gliders with flaps). */
+  flapsLeft: number;
+  /** Seconds of uninterrupted burn, for spooling rockets. */
+  private burnFor = 0;
+  private coastFor = 0;
+  /** Boost seconds that can still be regained this flight. */
+  private regenBudget: number;
+  private boostHeld = false;
   onGround = false;
   /** Seconds since last ground contact. */
   sinceContact = 0;
@@ -131,6 +153,16 @@ export class Flight {
     this.fuel = this.maxFuel;
     this.mass = totalMass(gear);
     this.lightness = PANDA_MASS / this.mass;
+    this.flapsLeft = gear.glider.flaps ?? 0;
+    this.regenBudget = this.maxFuel * REGEN_REFILLS;
+  }
+
+  /** Current rocket push as acceleration for a reference-weight panda. */
+  get thrust(): number {
+    const { rocket, fuel } = this.gear;
+    let t = rocket.thrust * (fuel.thrustMul ?? 1);
+    if (rocket.spool) t *= 0.6 + 1.4 * Math.min(1, this.burnFor / rocket.spool);
+    return t;
   }
 
   get speed(): number {
@@ -155,9 +187,29 @@ export class Flight {
     this.prevPitch = this.pitch;
     if (this.phase === 'ready' || this.phase === 'done') return;
     this.time += dt;
-    const canBoost = input.boost && this.fuel > 0 && this.gear.rocket.thrust > 0;
+    const { rocket, fuel } = this.gear;
+    const canBoost = input.boost && this.fuel > 0 && rocket.thrust > 0;
     this.boosting = canBoost;
-    if (canBoost) this.fuel = Math.max(0, this.fuel - dt);
+    if (canBoost) {
+      this.fuel = Math.max(0, this.fuel - dt);
+      this.burnFor += dt;
+      this.coastFor = 0;
+    } else {
+      this.burnFor = 0;
+      this.coastFor += dt;
+      // Kettles and solar panels top the tank back up after a short coast,
+      // up to a couple of tankfuls per flight.
+      const regen = (rocket.regen ?? 0) + (fuel.regen ?? 0) / rocket.burn;
+      if (regen > 0 && rocket.thrust > 0 && this.phase === 'air' && this.coastFor > REGEN_DELAY) {
+        const add = Math.min(regen * dt, this.maxFuel - this.fuel, this.regenBudget);
+        this.fuel += add;
+        this.regenBudget -= add;
+      }
+    }
+    // A fresh press of BOOST with no rocket power left beats the wings instead.
+    const pressed = input.boost && !this.boostHeld;
+    this.boostHeld = input.boost;
+    if (pressed && !canBoost && this.phase === 'air' && !this.onGround && this.flapsLeft > 0) this.flap();
 
     if (this.phase === 'ramp') this.stepRamp(dt, canBoost);
     else this.stepAir(dt, input, canBoost);
@@ -179,10 +231,10 @@ export class Flight {
 
   private stepRamp(dt: number, boost: boolean): void {
     const p = rampAt(this.ramp, this.rampS);
-    const mu = this.gear.sled.friction * RAMP_FRICTION_SCALE;
+    const mu = this.gear.sled.friction * RAMP_FRICTION_SCALE * (this.gear.ramp.ice ?? 1);
     let a = -GRAVITY * Math.sin(p.angle) - mu * GRAVITY * Math.cos(p.angle);
     a -= BODY_DRAG * this.gear.sled.drag * this.rampV * this.rampV * this.lightness;
-    if (boost) a += this.gear.rocket.thrust * this.lightness;
+    if (boost) a += this.thrust * this.lightness;
     this.rampV = Math.max(0.5, this.rampV + a * dt);
     this.rampS += this.rampV * dt;
     const q = rampAt(this.ramp, this.rampS);
@@ -191,6 +243,7 @@ export class Flight {
     this.pitch = q.angle;
     if (this.rampS >= this.ramp.length) {
       const lip = this.ramp.lip;
+      this.rampV += this.gear.ramp.kick ?? 0;
       this.phase = 'air';
       this.x = lip.x;
       this.y = lip.y;
@@ -202,7 +255,7 @@ export class Flight {
   }
 
   private stepAir(dt: number, input: FlightInput, boost: boolean): void {
-    const { glider, sled, rocket } = this.gear;
+    const { glider, sled } = this.gear;
     const rho = Math.exp(-Math.max(0, this.y) / ATMO_SCALE);
     const v = Math.hypot(this.vx, this.vy);
     let ax = 0;
@@ -214,7 +267,10 @@ export class Flight {
       const uy = this.vy / v;
       alpha = wrapAngle(this.pitch - Math.atan2(this.vy, this.vx));
       const stall = (glider.stallDeg * Math.PI) / 180;
-      const cl = liftCoefficient(alpha, stall);
+      // A magic carpet keeps its peak lift past the stall angle.
+      const peak = LIFT_SLOPE * stall;
+      const cl = glider.noStall ? clamp(LIFT_SLOPE * alpha, -peak, peak) : liftCoefficient(alpha, stall);
+      const plate = glider.noStall ? WING_PLATE_DRAG * 0.25 : WING_PLATE_DRAG;
       const kLift = BODY_LIFT + glider.lift;
       const q = rho * v * v;
       const sinA = Math.sin(alpha);
@@ -222,17 +278,19 @@ export class Flight {
       const dragK =
         BODY_DRAG * sled.drag * glider.tuck * (1 + BROADSIDE_DRAG * sinA * sinA) +
         glider.drag +
-        kLift * (glider.induced * cl * cl + WING_PLATE_DRAG * sinA * sinA);
+        kLift * (glider.induced * cl * cl + plate * sinA * sinA);
       const drag = dragK * q * this.lightness;
       ax += -uy * lift * this.lightness - ux * drag;
       ay += ux * lift * this.lightness - uy * drag;
-      this.stalled = glider.lift > 0 && Math.abs(alpha) > stall;
+      this.stalled = glider.lift > 0 && !glider.noStall && Math.abs(alpha) > stall;
+      // A propeller hat only fights falling.
+      if (glider.rotor && this.vy < 0) ay += glider.rotor * this.vy * this.vy * rho * this.lightness;
     }
     this.angleOfAttack = alpha;
 
     if (boost) {
-      ax += Math.cos(this.pitch) * rocket.thrust * this.lightness;
-      ay += Math.sin(this.pitch) * rocket.thrust * this.lightness;
+      ax += Math.cos(this.pitch) * this.thrust * this.lightness;
+      ay += Math.sin(this.pitch) * this.thrust * this.lightness;
     }
 
     // Pitch: player input fights a weathervane torque that turns the nose into the wind.
@@ -275,16 +333,24 @@ export class Flight {
     if (vn < 0) {
       const impact = -vn;
       let vt = this.vx * tx + this.vy * ty;
+      const { sled } = this.gear;
+      const surface = this.world.surfaceAt(this.x);
+      // Ice is slick; water drags, but a shallow, fast landing skips like a stone.
+      const surfaceGrip = surface === 'ice' ? 0.25 : surface === 'water' ? 1.6 : 1;
+      const grip = (sled.groundGlide ?? 1) * surfaceGrip;
+      const skipping = surface === 'water' && impact < Math.abs(vt) * 0.35 && Math.abs(vt) > 10;
       // Sliding friction for resting contact; a gentler share for the crash itself,
       // so a hard landing turns into a long slide rather than a dead stop.
-      const mu = GROUND_FRICTION + this.gear.sled.friction;
-      const muCrash = IMPACT_FRICTION + this.gear.sled.friction * 0.5;
+      const mu = (GROUND_FRICTION + sled.friction) * grip;
+      const muCrash = (IMPACT_FRICTION + sled.friction * 0.5) * (skipping ? 0.3 : grip);
       const loss = mu * Math.min(impact, 3) + muCrash * Math.max(0, impact - 3);
       vt = Math.sign(vt) * Math.max(0, Math.abs(vt) - loss);
-      const bounce = impact > BOUNCE_SPEED ? impact * RESTITUTION : 0;
+      const restitution = skipping ? 0.65 : (sled.bounce ?? RESTITUTION);
+      const threshold = skipping ? 1 : sled.bounce ? BOUNCE_SPEED * 0.4 : BOUNCE_SPEED;
+      const bounce = impact > threshold ? impact * restitution : 0;
       this.vx = tx * vt + nx * bounce;
       this.vy = ty * vt + ny * bounce;
-      if (impact > 3 && this.sinceContact > 0.15) this.emit('impact', impact);
+      if (impact > 3 && this.sinceContact > 0.15) this.emit(surface === 'water' ? 'splash' : 'impact', impact);
     }
     if (!this.touchedDown) this.touchedDown = true;
     this.onGround = true;
@@ -298,6 +364,16 @@ export class Flight {
     else this.slowFor = 0;
     const outOfFuelCrawl = this.groundTime > MAX_GROUND_TIME && (this.fuel <= 0 || this.gear.rocket.thrust === 0);
     if (this.slowFor > STOP_HOLD || outOfFuelCrawl) this.finish();
+  }
+
+  /** One wing beat: a shove forward and up, relative to the nose. */
+  private flap(): void {
+    const a = this.pitch + 0.6;
+    const dv = 7.5 * Math.sqrt(this.lightness);
+    this.vx += Math.cos(a) * dv;
+    this.vy += Math.sin(a) * dv;
+    this.flapsLeft--;
+    this.emit('flap', this.flapsLeft);
   }
 
   finish(): void {

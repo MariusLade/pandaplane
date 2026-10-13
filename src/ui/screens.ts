@@ -266,6 +266,7 @@ export class Screens {
             ${tag}
             <canvas class="preview" data-item="${item.id}"></canvas>
             <h3>${escape(item.name)}</h3>
+            ${item.perk ? `<span class="perk">✨ ${escape(item.perk)}</span>` : ''}
             <p class="blurb">${escape(item.blurb)}</p>
             ${sensorInfo}
             <div class="stats">${rows}</div>

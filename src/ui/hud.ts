@@ -38,6 +38,8 @@ export class Hud {
   private aoaFill = $('#hud-aoa-fill', this.root);
   private aoaNum = $('#hud-aoa-num', this.root);
   private horn = $('#hud-horn', this.root);
+  private flapsChip = $('#hud-flaps-chip', this.root);
+  private flaps = $('#hud-flaps', this.root);
   private progress = $('#hud-progress-fill', this.root);
   private marker = $('#hud-progress-panda', this.root);
   private best = $('#hud-progress-best', this.root);
@@ -62,6 +64,7 @@ export class Hud {
     this.horizon.hidden = !has.has('horizon');
     this.aoa.hidden = !has.has('aoa');
     this.horn.hidden = !has.has('stallHorn');
+    this.flapsChip.hidden = !f.gear.glider.flaps;
     this.cache.clear();
   }
 
@@ -87,6 +90,7 @@ export class Hud {
     const flying = f.phase === 'air' && !f.onGround;
     this.set(this.dist, metres(f.distance));
     this.set(this.coins, money(f.coinMoney));
+    if (f.gear.glider.flaps) this.set(this.flaps, `× ${f.flapsLeft}`);
 
     if (has.has('speed')) this.set(this.speed, `${Math.round(f.speed * 3.6)} km/h`);
     if (has.has('climb')) {

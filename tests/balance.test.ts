@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { autopilot } from '../src/game/autopilot';
 import { GOAL_DISTANCE } from '../src/game/constants';
 import { Flight } from '../src/game/flight';
-import { CATALOG, CATEGORIES, loadoutByIndex, type Category, type Loadout } from '../src/game/upgrades';
+import {
+  CATALOG,
+  CATEGORIES,
+  loadoutByIndex,
+  loadoutFor,
+  type Category,
+  type Equipped,
+  type Loadout,
+} from '../src/game/upgrades';
 import { World } from '../src/game/world';
 
 function fly(gear: Loadout, seed = 1234, day = 1) {
@@ -13,21 +21,27 @@ function fly(gear: Loadout, seed = 1234, day = 1) {
   return f.result();
 }
 
-/** Every category at the same relative position in its (cost-sorted) shop. */
+/** Sensible builds at increasing budgets. */
+const BUILDS: { name: string; gear: Equipped }[] = [
+  { name: 'starter', gear: { ramp: 'bump', sled: 'box', glider: 'none', rocket: 'none', fuel: 'thimble' } },
+  { name: 'early', gear: { ramp: 'wooden', sled: 'plastic', glider: 'leaf', rocket: 'firework', fuel: 'bottle' } },
+  { name: 'mid', gear: { ramp: 'tall', sled: 'racing', glider: 'hang', rocket: 'model', fuel: 'jerry' } },
+  { name: 'late', gear: { ramp: 'mega', sled: 'bobsled', glider: 'carbon', rocket: 'turbo', fuel: 'barrel' } },
+  { name: 'endgame', gear: { ramp: 'mountain', sled: 'hover', glider: 'albatross', rocket: 'space', fuel: 'reactor' } },
+];
+
 const atFraction = (t: number) =>
   loadoutByIndex(
     Object.fromEntries(CATEGORIES.map((c) => [c, Math.round(t * (CATALOG[c].length - 1))])) as Record<Category, number>,
   );
 
-const STEPS = [0, 0.2, 0.4, 0.6, 0.8, 1];
-
 describe('balance', () => {
-  const results = STEPS.map((t) => ({ t, r: fly(atFraction(t)) }));
+  const results = BUILDS.map((b) => ({ name: b.name, r: fly(loadoutFor(b.gear)) }));
 
   it('prints a progression table', () => {
-    for (const { t, r } of results) {
+    for (const { name, r } of results) {
       console.log(
-        `shop ${String(t * 100).padStart(3)}%: ${r.distance.toFixed(0).padStart(6)} m  alt ${r.maxAltitude.toFixed(0).padStart(5)}  ` +
+        `${name.padEnd(8)}: ${r.distance.toFixed(0).padStart(6)} m  alt ${r.maxAltitude.toFixed(0).padStart(5)}  ` +
           `v ${(r.maxSpeed * 3.6).toFixed(0).padStart(4)} km/h  air ${r.airtime.toFixed(1).padStart(5)} s`,
       );
     }
@@ -42,8 +56,12 @@ describe('balance', () => {
     for (let i = 1; i < results.length; i++) expect(results[i].r.distance).toBeGreaterThan(results[i - 1].r.distance);
   });
 
-  it('the most expensive build can reach the goal', () => {
+  it('the endgame build can reach the goal', () => {
     expect(results[results.length - 1].r.distance).toBeGreaterThan(GOAL_DISTANCE);
+  });
+
+  it('no build breaks physics', () => {
+    for (let t = 0; t <= 1; t += 0.1) expect(fly(atFraction(t)).distance).toBeLessThan(30000);
   });
 
   it('every item is a usable upgrade over the starter gear', () => {

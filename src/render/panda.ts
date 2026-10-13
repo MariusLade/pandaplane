@@ -11,6 +11,8 @@ export interface PandaPose {
   mood: Mood;
   /** 0..1, how much the scarf streams behind. */
   wind: number;
+  /** 1 right after a wing beat, fading to 0. */
+  flap?: number;
 }
 
 const BLACK = '#1f1d24';
@@ -36,8 +38,11 @@ export function drawPanda(
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
 
-  const hasGlider = gear.glider.style !== 'none';
+  const gs = gear.glider.style;
+  // Wings drawn above the panda (the carpet goes underneath, the beanie on the head).
+  const hasGlider = gs !== 'none' && gs !== 'carpet' && gs !== 'propeller';
   const hasRocket = gear.rocket.style !== 'none';
+  if (gs === 'carpet') drawCarpet(ctx, gear.glider.color, pose);
 
   if (hasRocket && pose.boosting) drawFlame(ctx, gear.rocket.style, pose.time);
   drawScarf(ctx, pose);
@@ -46,6 +51,7 @@ export function drawPanda(
   drawBody(ctx, pose, hasGlider);
   drawSled(ctx, gear.sled.style, gear.sled.color, pose.time);
   drawHead(ctx, pose);
+  if (gs === 'propeller') drawBeanie(ctx, gear.glider.color, pose);
   if (hasGlider) drawGliderArms(ctx);
 
   ctx.restore();
@@ -352,6 +358,66 @@ function drawSled(ctx: CanvasRenderingContext2D, style: SledStyle, color: string
       ctx.stroke();
       break;
     }
+    case 'wok': {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(-0.72, 0.2);
+      ctx.quadraticCurveTo(0, 0.72, 0.72, 0.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#1b1d22';
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.beginPath();
+      ctx.ellipse(-0.2, 0.34, 0.3, 0.05, 0.15, 0, Math.PI * 2);
+      ctx.fill();
+      // Long handle sticking out the back.
+      ctx.strokeStyle = '#7a5532';
+      ctx.lineWidth = 0.09;
+      ctx.beginPath();
+      ctx.moveTo(-0.7, 0.24);
+      ctx.lineTo(-1.15, 0.12);
+      ctx.stroke();
+      break;
+    }
+    case 'inflatable': {
+      // Puffy striped ring with turrets.
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = i % 2 ? '#ffd23d' : color;
+        ellipse(ctx, -0.6 + i * 0.3, 0.42, 0.2, 0.17);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#5dc4ff';
+      ctx.fillRect(0.62, 0.05, 0.14, 0.28);
+      ctx.fillRect(-0.78, 0.05, 0.14, 0.28);
+      ctx.fillStyle = '#ffd23d';
+      ellipse(ctx, 0.69, 0.05, 0.08, 0.05);
+      ctx.fill();
+      ellipse(ctx, -0.71, 0.05, 0.08, 0.05);
+      ctx.fill();
+      break;
+    }
+    case 'surfboard': {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(-0.95, 0.42);
+      ctx.quadraticCurveTo(-0.9, 0.32, -0.6, 0.32);
+      ctx.lineTo(0.7, 0.32);
+      ctx.quadraticCurveTo(1.15, 0.33, 1.05, 0.42);
+      ctx.quadraticCurveTo(0.6, 0.52, -0.95, 0.42);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-0.7, 0.38, 1.5, 0.035);
+      ctx.fillStyle = '#ff7a3d';
+      ctx.beginPath();
+      ctx.moveTo(-0.75, 0.48);
+      ctx.lineTo(-0.85, 0.62);
+      ctx.lineTo(-0.6, 0.49);
+      ctx.fill();
+      break;
+    }
     case 'hover': {
       const glow = 0.5 + 0.5 * Math.sin(time * 10);
       ctx.fillStyle = `rgba(80,255,230,${0.25 + glow * 0.25})`;
@@ -389,6 +455,12 @@ function rocketSize(style: RocketStyle): { len: number; r: number } {
       return { len: 0.9, r: 0.17 };
     case 'turbo':
       return { len: 1.05, r: 0.18 };
+    case 'cola':
+      return { len: 0.9, r: 0.15 };
+    case 'kettle':
+      return { len: 0.8, r: 0.22 };
+    case 'afterburner':
+      return { len: 1.2, r: 0.19 };
     default:
       return { len: 1.2, r: 0.2 };
   }
@@ -472,6 +544,81 @@ function drawRocket(ctx: CanvasRenderingContext2D, style: RocketStyle, color: st
       }
       break;
     }
+    case 'cola': {
+      // Brown bottle, red label, foam frothing out the back when lit.
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(cx - len / 2, cy - r, len * 0.68, r * 2, 0.06);
+      ctx.moveTo(cx + len * 0.18, cy - r);
+      ctx.quadraticCurveTo(cx + len * 0.34, cy - r * 0.4, cx + len * 0.44, cy - r * 0.38);
+      ctx.lineTo(cx + len * 0.44, cy + r * 0.38);
+      ctx.quadraticCurveTo(cx + len * 0.34, cy + r * 0.4, cx + len * 0.18, cy + r);
+      ctx.fill();
+      ctx.fillStyle = '#e2493b';
+      ctx.fillRect(cx - len * 0.32, cy - r, len * 0.36, r * 2);
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${(r * 0.9).toFixed(2)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('~', cx - len * 0.14, cy + r * 0.3);
+      ctx.fillStyle = '#c9ced6';
+      ctx.fillRect(cx + len * 0.44, cy - r * 0.42, 0.06, r * 0.84);
+      break;
+    }
+    case 'kettle': {
+      // A round kettle riding nose-first, spout pointing back.
+      ctx.fillStyle = color;
+      ellipse(ctx, cx, cy, len * 0.42, r);
+      ctx.fill();
+      ctx.strokeStyle = '#7d8794';
+      ctx.lineWidth = 0.03;
+      ctx.stroke();
+      ctx.fillStyle = '#7d8794';
+      ctx.beginPath();
+      ctx.moveTo(cx - len * 0.3, cy + r * 0.2);
+      ctx.lineTo(cx - len * 0.62, cy - r * 0.15);
+      ctx.lineTo(cx - len * 0.6, cy - r * 0.32);
+      ctx.lineTo(cx - len * 0.25, cy - r * 0.15);
+      ctx.fill();
+      ctx.strokeStyle = '#1f1d24';
+      ctx.lineWidth = 0.05;
+      ctx.beginPath();
+      ctx.arc(cx, cy - r * 0.9, r * 0.6, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.stroke();
+      ctx.fillStyle = '#e2493b';
+      ellipse(ctx, cx, cy - r, 0.06, 0.04);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ellipse(ctx, cx + len * 0.15, cy - r * 0.35, 0.06, 0.035);
+      ctx.fill();
+      break;
+    }
+    case 'afterburner': {
+      // Jet nacelle with intake ring and glowing exhaust rings.
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(cx + len / 2, cy - r);
+      ctx.lineTo(cx - len / 2 + 0.1, cy - r * 0.8);
+      ctx.lineTo(cx - len / 2, cy - r * 0.55);
+      ctx.lineTo(cx - len / 2, cy + r * 0.55);
+      ctx.lineTo(cx - len / 2 + 0.1, cy + r * 0.8);
+      ctx.lineTo(cx + len / 2, cy + r);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#2a2d33';
+      ellipse(ctx, cx + len / 2, cy, 0.06, r);
+      ctx.fill();
+      ctx.strokeStyle = '#ff9f1c';
+      ctx.lineWidth = 0.035;
+      for (const dx of [-0.38, -0.3]) {
+        ctx.beginPath();
+        ctx.moveTo(cx + dx, cy - r * 0.75);
+        ctx.lineTo(cx + dx, cy + r * 0.75);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillRect(cx - len * 0.3, cy - r * 0.7, len * 0.7, r * 0.25);
+      break;
+    }
     case 'twin':
       rocketTube(ctx, cx, cy - r * 1.05, len, r, color, '#e2493b', false);
       rocketTube(ctx, cx + 0.05, cy + r * 1.05, len, r, color, '#e2493b', false);
@@ -515,7 +662,7 @@ function drawFlame(ctx: CanvasRenderingContext2D, style: RocketStyle, time: numb
   const fx = ROCKET_X - len / 2 - 0.05;
   const f = 0.8 + Math.sin(time * 60) * 0.15 + Math.sin(time * 37) * 0.1;
   const ion = style === 'ion';
-  const soda = style === 'soda';
+  const soda = style === 'soda' || style === 'cola' || style === 'kettle';
   const layers: [string, number, number][] = ion
     ? [
         ['rgba(60,140,255,0.7)', 1.1, 0.16],
@@ -533,7 +680,8 @@ function drawFlame(ctx: CanvasRenderingContext2D, style: RocketStyle, time: numb
           ['rgba(255,250,200,1)', 0.4, 0.08],
         ];
   const ys = style === 'twin' ? [ROCKET_Y - r * 1.05, ROCKET_Y + r * 1.05] : [ROCKET_Y];
-  const size = style === 'space' ? 1.3 : style === 'firework' ? 0.8 : 1;
+  const size =
+    style === 'space' || style === 'afterburner' ? 1.3 : style === 'cola' ? 1.5 : style === 'firework' ? 0.8 : 1;
   for (const fy of ys) {
     for (const [c, l, w] of layers) {
       ctx.fillStyle = c;
@@ -708,6 +856,63 @@ function drawGliderBack(ctx: CanvasRenderingContext2D, style: GliderStyle, color
       ctx.stroke();
       break;
     }
+    case 'feathers':
+    case 'dragon': {
+      const dragon = style === 'dragon';
+      // Wing lifts on a beat, then settles.
+      const beat = (pose.flap ?? 0) * 0.5;
+      ctx.rotate(-beat * 0.6);
+      const n = dragon ? 5 : 7;
+      // Leading edge / arm bone.
+      ctx.fillStyle = dragon ? color : '#7a5232';
+      ctx.beginPath();
+      ctx.moveTo(c * 0.55, 0.02);
+      ctx.quadraticCurveTo(c * 0.1, (dragon ? -1.0 : -0.5) - flex - beat, -c * 0.62, (dragon ? -0.45 : -0.18) - beat * 0.5);
+      if (dragon) {
+        // Membrane scallops between spines.
+        for (let i = 0; i < n; i++) {
+          const x0 = -c * 0.62 + (i / n) * c * 1.15;
+          const x1 = -c * 0.62 + ((i + 1) / n) * c * 1.15;
+          ctx.quadraticCurveTo((x0 + x1) / 2, 0.02, x1, i === n - 1 ? 0.02 : -0.3);
+        }
+      } else {
+        // Overlapping primary feathers.
+        for (let i = 0; i <= n; i++) {
+          const x = -c * 0.62 + (i / n) * c * 1.17;
+          ctx.quadraticCurveTo(x - c * 0.06, 0.3, x + c * 0.02, 0.05);
+        }
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = dragon ? '#1d5c40' : '#5a3b20';
+      ctx.lineWidth = 0.03;
+      ctx.stroke();
+      if (dragon) {
+        ctx.strokeStyle = '#1d5c40';
+        ctx.lineWidth = 0.04;
+        ctx.beginPath();
+        for (let i = 1; i < n; i++) {
+          ctx.moveTo(c * 0.3, -0.5);
+          ctx.lineTo(-c * 0.62 + (i / n) * c * 1.15, -0.3);
+        }
+        ctx.stroke();
+        // Horned claw at the wrist.
+        ctx.fillStyle = '#f2e3b3';
+        ctx.beginPath();
+        ctx.moveTo(c * 0.26, -0.62 - beat);
+        ctx.lineTo(c * 0.4, -0.9 - beat);
+        ctx.lineTo(c * 0.36, -0.58 - beat);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = '#c99a5b';
+        ctx.beginPath();
+        ctx.moveTo(c * 0.5, 0);
+        ctx.quadraticCurveTo(0, -0.35 - beat, -c * 0.4, -0.08);
+        ctx.quadraticCurveTo(0, -0.12, c * 0.5, 0);
+        ctx.fill();
+      }
+      break;
+    }
     case 'carbon': {
       ctx.beginPath();
       ctx.moveTo(c * 0.55, 0.02);
@@ -749,6 +954,76 @@ function drawGliderBack(ctx: CanvasRenderingContext2D, style: GliderStyle, color
     }
   }
   ctx.restore();
+}
+
+/** Flying carpet the panda rides on, rippling in the wind. */
+function drawCarpet(ctx: CanvasRenderingContext2D, color: string, pose: PandaPose) {
+  const n = 12;
+  const len = 2.4;
+  const wave = (i: number) => Math.sin(pose.time * 9 - i * 0.7) * 0.05 * (0.4 + pose.wind);
+  ctx.beginPath();
+  for (let i = 0; i <= n; i++) {
+    const x = len / 2 - (i / n) * len;
+    const y = 0.56 + wave(i);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  for (let i = n; i >= 0; i--) ctx.lineTo(len / 2 - (i / n) * len, 0.68 + wave(i));
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  // Border and pattern.
+  ctx.strokeStyle = '#f2b705';
+  ctx.lineWidth = 0.03;
+  ctx.stroke();
+  ctx.fillStyle = '#f2b705';
+  for (let i = 2; i < n - 1; i += 3) {
+    const x = len / 2 - (i / n) * len;
+    ellipse(ctx, x, 0.62 + wave(i), 0.06, 0.03);
+    ctx.fill();
+  }
+  // Tassels.
+  ctx.strokeStyle = '#f2b705';
+  ctx.beginPath();
+  for (const [i, sign] of [
+    [0, 1],
+    [n, -1],
+  ] as const) {
+    const x = len / 2 - (i / n) * len;
+    for (let k = 0; k < 3; k++) {
+      ctx.moveTo(x, 0.58 + k * 0.04 + wave(i));
+      ctx.lineTo(x + sign * 0.12, 0.6 + k * 0.05 + wave(i));
+    }
+  }
+  ctx.stroke();
+}
+
+/** Propeller beanie: a striped cap with a spinning rotor. */
+function drawBeanie(ctx: CanvasRenderingContext2D, color: string, pose: PandaPose) {
+  const hx = 0.74;
+  const hy = -0.48;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(hx, hy + 0.05, 0.3, Math.PI, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#e2493b';
+  ctx.beginPath();
+  ctx.arc(hx, hy + 0.05, 0.3, Math.PI * 1.33, Math.PI * 1.66);
+  ctx.lineTo(hx, hy + 0.05);
+  ctx.fill();
+  ctx.fillStyle = '#2f7de1';
+  ctx.fillRect(hx - 0.31, hy + 0.02, 0.62, 0.06);
+  ctx.fillStyle = '#7d8794';
+  ctx.fillRect(hx - 0.02, hy - 0.4, 0.04, 0.16);
+  // Rotor blades seen edge-on: their visible length cycles as they spin.
+  const spin = Math.cos(pose.time * 40);
+  ctx.fillStyle = '#e2493b';
+  ellipse(ctx, hx, hy - 0.42, 0.5 * Math.abs(spin) + 0.05, 0.04);
+  ctx.fill();
+  ctx.fillStyle = '#1f1d24';
+  ellipse(ctx, hx, hy - 0.42, 0.04, 0.04);
+  ctx.fill();
 }
 
 function drawGliderArms(ctx: CanvasRenderingContext2D) {

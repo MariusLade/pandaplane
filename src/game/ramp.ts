@@ -21,6 +21,7 @@ export interface Ramp {
   lip: RampPoint;
   /** Where the kicker starts rising off the mountain. */
   kickerStart: number;
+  item: RampItem;
 }
 
 const STEP = 0.5;
@@ -94,6 +95,7 @@ export function buildRamp(item: RampItem): Ramp {
     top: points[0],
     lip: points[points.length - 1],
     kickerStart: -K,
+    item,
   };
 }
 

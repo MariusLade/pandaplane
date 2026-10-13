@@ -713,6 +713,17 @@ kbd {
   box-shadow: none;
 }
 
+.perk {
+  align-self: flex-start;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #6b3fa0;
+  background: #f1e6ff;
+  border: 2px solid #6b3fa0;
+  border-radius: 8px;
+  padding: 1px 8px;
+  transform: rotate(-1deg);
+}
 .shop-note {
   margin: -4px 0 0 6px;
   font-size: 0.85rem;

@@ -33,6 +33,8 @@ export class Renderer {
   /** Panda pose interpolated between the last two physics steps (smooth at any frame rate). */
   private view = { x: 0, y: 0, pitch: 0 };
   private speech = { text: '', time: 0, duration: 0 };
+  /** Seconds since the last wing beat, for the flap animation. */
+  private sinceFlap = 99;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -128,6 +130,31 @@ export class Renderer {
         const color = rgb(mixRgb(b.a.lip, b.b.lip, b.t));
         p.burst(ev.x, flight.world.groundY(ev.x) + 0.2, Math.min(40, 6 + ev.amount), 'puff', color, 3 + ev.amount * 0.2, 0.5, 1);
         this.cam.addShake(clamp(ev.amount / 30, 0.1, 0.9));
+        break;
+      }
+      case 'flap':
+        this.sinceFlap = 0;
+        p.burst(ev.x, ev.y + 0.5, 6, 'confetti', flight.gear.glider.style === 'dragon' ? '#2e9e6b' : '#c99a5b', 5, 0.12, 0.9);
+        p.burst(ev.x, ev.y, 8, 'puff', '#ffffff', 4, 0.35, 0.5);
+        break;
+      case 'splash': {
+        const gy = flight.world.groundY(ev.x);
+        const color = flight.world.surfaceAt(ev.x) === 'ice' ? '#e8f7ff' : '#8fd3ff';
+        for (let i = 0; i < Math.min(40, 8 + ev.amount * 1.5); i++) {
+          p.spawn({
+            kind: 'spark',
+            x: ev.x + (Math.random() - 0.5) * 2,
+            y: gy + 0.2,
+            vx: flight.vx * 0.3 + (Math.random() - 0.5) * 6,
+            vy: 3 + Math.random() * (4 + ev.amount * 0.4),
+            life: 0.9,
+            size: 0.12,
+            color,
+            gravity: 12,
+            drag: 0.5,
+          });
+        }
+        this.cam.addShake(Math.min(0.5, ev.amount / 40));
         break;
       }
       case 'goal':
@@ -240,6 +267,7 @@ export class Renderer {
   }
 
   draw(world: World, flight: Flight, gearMood: Mood, time: number, dt: number): void {
+    this.sinceFlap += dt;
     const ctx = this.ctx;
     const cam = this.cam;
     this.particles.update(dt);
@@ -249,8 +277,9 @@ export class Renderer {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.bg.draw(ctx, cam, time);
     this.bg.drawNearClouds(ctx, cam);
-    drawTerrain(ctx, cam, world);
-    drawDecor(ctx, cam, world, world.seed);
+    drawDecor(ctx, cam, world, time, this.dpr, 'back');
+    drawTerrain(ctx, cam, world, time);
+    drawDecor(ctx, cam, world, time, this.dpr, 'front');
     drawSigns(ctx, cam, world);
     drawRamp(ctx, cam, flight.ramp, world);
 
@@ -272,6 +301,7 @@ export class Renderer {
       boosting: flight.boosting,
       mood: gearMood,
       wind: clamp(speed / 25, 0, 1),
+      flap: Math.max(0, 1 - this.sinceFlap * 3),
     });
 
     this.drawStreaks(flight);

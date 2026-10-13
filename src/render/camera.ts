@@ -53,12 +53,16 @@ export class Camera {
    * screen while flying low.
    */
   follow(tx: number, ty: number, span: number, groundY: number, dt: number, snap = false): void {
-    const rate = snap ? 1e9 : 5;
     this.span = snap ? span : damp(this.span, span, 1.6, dt);
     const viewH = this.viewHeight;
     const minY = groundY + viewH * 0.28;
-    this.x = damp(this.x, tx, rate, dt);
-    this.y = damp(this.y, Math.max(ty, minY), rate, dt);
+    if (snap) {
+      this.x = tx;
+      this.y = Math.max(ty, minY);
+    } else {
+      this.x = damp(this.x, tx, 5, dt);
+      this.y = damp(this.y, Math.max(ty, minY), 5, dt);
+    }
     this.shake = Math.max(0, this.shake - dt * 2.5);
     const s = this.shake * this.shake * 14;
     this.shakeX = (Math.random() - 0.5) * s;

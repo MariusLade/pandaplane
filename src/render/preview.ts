@@ -27,6 +27,7 @@ function setup(canvas: HTMLCanvasElement): { ctx: CanvasRenderingContext2D; w: n
   return { ctx, w, h };
 }
 
+const INK = '#2a2340';
 const maxRamp = RAMPS[RAMPS.length - 1];
 const maxFuel = FUELS.reduce((m, f) => Math.max(m, f.seconds), 0);
 
@@ -70,6 +71,62 @@ function drawRampPreview(ctx: CanvasRenderingContext2D, w: number, h: number, it
 }
 
 function drawFuelPreview(ctx: CanvasRenderingContext2D, w: number, h: number, item: FuelItem) {
+  if (item.style === 'solar') {
+    // A tilted solar panel with a little battery.
+    const pw = w * 0.5;
+    const ph = h * 0.45;
+    ctx.save();
+    ctx.translate(w / 2, h * 0.45);
+    ctx.transform(1, 0, -0.35, 1, 0, 0);
+    ctx.fillStyle = '#1f3c88';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(-pw / 2, -ph / 2, pw, ph, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#7fb2ff';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-pw / 2 + (pw * i) / 4, -ph / 2);
+      ctx.lineTo(-pw / 2 + (pw * i) / 4, ph / 2);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(-pw / 2, 0);
+    ctx.lineTo(pw / 2, 0);
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#3a3f4b';
+    ctx.fillRect(w / 2 - 3, h * 0.66, 6, h * 0.2);
+    return;
+  }
+  if (item.style === 'nitro') {
+    const tw = w * 0.18;
+    const th = h * 0.72;
+    const x = (w - tw) / 2;
+    const y = (h - th) / 2 + 4;
+    ctx.fillStyle = '#e2493b';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(x, y, tw, th, tw / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#c9ced6';
+    ctx.fillRect(x + tw * 0.25, y - 8, tw * 0.5, 9);
+    ctx.save();
+    ctx.translate(w / 2, h / 2 + 4);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 12px Fredoka, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('NITRO', 0, 0);
+    ctx.restore();
+    return;
+  }
   const frac = item.seconds / maxFuel;
   const heavy = Math.min(1, item.weight / 30);
   const tw = w * (0.22 + heavy * 0.18);
@@ -127,7 +184,6 @@ export function drawItemPreview(
   });
 }
 
-const INK = '#2a2340';
 
 /** One sensor gadget, drawn from primitives, centred at (cx, cy) with radius r. */
 export function drawSensorGadget(ctx: CanvasRenderingContext2D, item: SensorItem, cx: number, cy: number, r: number, time: number): void {

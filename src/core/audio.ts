@@ -129,6 +129,15 @@ export class Sound {
     this.tone(659, 0.08, 'square', 0.1, 0.07);
     this.tone(784, 0.16, 'square', 0.1, 0.14);
   }
+  flap(): void {
+    this.burst(0.18, 600, 0.3, 'bandpass');
+    this.tone(220, 0.15, 'triangle', 0.12, 0, 330);
+  }
+  splash(strength: number): void {
+    const v = Math.min(1, strength / 25);
+    this.burst(0.35 + v * 0.4, 1800, 0.3 + v * 0.4, 'highpass');
+    this.tone(300, 0.2, 'sine', 0.12, 0.02, 120);
+  }
   honk(): void {
     this.tone(440, 0.18, 'square', 0.09);
     this.tone(330, 0.18, 'square', 0.07);

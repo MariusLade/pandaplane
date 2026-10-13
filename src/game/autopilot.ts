@@ -23,5 +23,7 @@ export function autopilot(f: Flight, climbDeg = 32): FlightInput {
     const alpha = Math.min(clBest / LIFT_SLOPE, stall * 0.85);
     target = flightAngle + alpha;
   }
-  return { pitch: clamp(wrapAngle(target - f.pitch) * 4, -1, 1), boost: hasFuel };
+  // Out of fuel with wings that flap: beat them (fresh presses) whenever sinking.
+  const flap = !hasFuel && f.flapsLeft > 0 && f.vy < -2 && Math.floor(f.time * 2) % 2 === 0;
+  return { pitch: clamp(wrapAngle(target - f.pitch) * 4, -1, 1), boost: hasFuel || flap };
 }

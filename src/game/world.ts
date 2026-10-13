@@ -111,8 +111,22 @@ export function mountainDistanceForHeight(h: number): number {
  * same every day; pickups depend on `pickupSeed`, so they move around between
  * flights.
  */
+export type Surface = 'ground' | 'ice' | 'water';
+
+/** A pond filling a dip in the hills: water, or ice in the snowy biome. */
+export interface Pond {
+  x0: number;
+  x1: number;
+  level: number;
+  kind: 'ice' | 'water';
+}
+
+const POND_CELL = 280;
+const POND_MAX_HALF_WIDTH = 90;
+
 export class World {
   private chunks = new Map<number, Pickup[]>();
+  private ponds = new Map<number, Pond | null>();
 
   constructor(
     readonly seed: number,
@@ -130,7 +144,79 @@ export class World {
     return broad + ridge + detail;
   }
 
+  /** Walkable surface height: the terrain, or a pond's surface where one fills a dip. */
   groundY(x: number): number {
+    const raw = this.rawGround(x);
+    const pond = this.pondAt(x);
+    return pond && raw < pond.level ? pond.level : raw;
+  }
+
+  /** What the panda would land on at x. */
+  surfaceAt(x: number): Surface {
+    const pond = this.pondAt(x);
+    return pond && this.rawGround(x) < pond.level ? pond.kind : 'ground';
+  }
+
+  pondAt(x: number): Pond | null {
+    const c = Math.floor(x / POND_CELL);
+    for (let k = c - 1; k <= c + 1; k++) {
+      const p = this.pond(k);
+      if (p && x >= p.x0 && x <= p.x1) return p;
+    }
+    return null;
+  }
+
+  /** Ponds overlapping [x0, x1], for drawing. */
+  pondsIn(x0: number, x1: number): Pond[] {
+    const out: Pond[] = [];
+    for (let k = Math.floor(x0 / POND_CELL) - 1; k <= Math.floor(x1 / POND_CELL) + 1; k++) {
+      const p = this.pond(k);
+      if (p && p.x1 >= x0 && p.x0 <= x1) out.push(p);
+    }
+    return out;
+  }
+
+  private pond(cell: number): Pond | null {
+    let p = this.ponds.get(cell);
+    if (p !== undefined) return p;
+    p = this.makePond(cell);
+    this.ponds.set(cell, p);
+    return p;
+  }
+
+  /** Find the lowest dip in a cell and fill it, if both banks rise above the water line. */
+  private makePond(cell: number): Pond | null {
+    if (cell < 2 || hash(this.seed, cell, 501) > 0.45) return null;
+    const a = cell * POND_CELL + 30;
+    const b = (cell + 1) * POND_CELL - 30;
+    let minX = a;
+    let minY = Infinity;
+    for (let x = a; x <= b; x += 2) {
+      const y = this.rawGround(x);
+      if (y < minY) {
+        minY = y;
+        minX = x;
+      }
+    }
+    const level = minY + 1.5 + hash(this.seed, cell, 502) * 2.5;
+    let x0 = minX;
+    while (this.rawGround(x0) < level) {
+      x0 -= 0.5;
+      if (minX - x0 > POND_MAX_HALF_WIDTH) return null;
+    }
+    let x1 = minX;
+    while (this.rawGround(x1) < level) {
+      x1 += 0.5;
+      if (x1 - minX > POND_MAX_HALF_WIDTH) return null;
+    }
+    if (x1 - x0 < 8) return null;
+    const b2 = biomeAt(minX);
+    const biome = b2.t > 0.5 ? b2.b : b2.a;
+    return { x0, x1, level, kind: biome.decor === 'snowpine' ? 'ice' : 'water' };
+  }
+
+  /** Terrain height ignoring ponds. */
+  rawGround(x: number): number {
     if (x <= 0) {
       const m = mountainHeight(x);
       // Rocky bumps far up the mountain, well away from any ramp.

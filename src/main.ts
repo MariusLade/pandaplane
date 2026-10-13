@@ -384,6 +384,12 @@ class Game {
         case 'impact':
           if (ev.amount > 12) this.say(quip('crash'));
           break;
+        case 'splash':
+          this.say(quip('splash'));
+          break;
+        case 'flap':
+          if (ev.amount === 0) this.say(quip('lastFlap'));
+          break;
         case 'bigcoin':
           this.say(quip('coin'));
           break;
@@ -422,6 +428,12 @@ class Game {
         case 'impact':
           this.lastImpact = ev.amount;
           this.sound.impact(ev.amount);
+          break;
+        case 'splash':
+          this.sound.splash(ev.amount);
+          break;
+        case 'flap':
+          this.sound.flap();
           break;
         case 'goal':
           this.sound.fanfare();
