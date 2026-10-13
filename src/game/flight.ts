@@ -11,15 +11,17 @@ import {
   GROUND_FRICTION,
   IMPACT_FRICTION,
   LIFT_SLOPE,
+  PANDA_MASS,
   PANDA_RADIUS,
   PICKUP_REACH,
   PITCH_RATE,
+  RAMP_FRICTION_SCALE,
   RESTITUTION,
   RING_BOOST,
   WING_PLATE_DRAG,
 } from './constants';
 import { buildRamp, rampAt, type Ramp } from './ramp';
-import type { Loadout } from './upgrades';
+import { burnTime, totalMass, type Loadout } from './upgrades';
 import type { Pickup, World } from './world';
 
 export type Phase = 'ready' | 'ramp' | 'air' | 'done';
@@ -78,10 +80,20 @@ export class Flight {
   vx = 0;
   vy = 0;
   pitch: number;
+  /** State at the start of the last step, for smooth interpolated rendering. */
+  prevX: number;
+  prevY: number;
+  prevPitch: number;
   rampS = 0;
   rampV = 0;
 
+  /** Seconds of boost left. */
   fuel: number;
+  readonly maxFuel: number;
+  /** Panda plus carried gear, kg. */
+  readonly mass: number;
+  /** PANDA_MASS / mass: how much forces are diluted by extra weight. */
+  private readonly lightness: number;
   boosting = false;
   onGround = false;
   /** Seconds since last ground contact. */
@@ -112,7 +124,13 @@ export class Flight {
     this.x = this.ramp.top.x;
     this.y = this.ramp.top.y;
     this.pitch = this.ramp.top.angle;
-    this.fuel = gear.rocket.thrust > 0 ? gear.fuel.seconds : 0;
+    this.prevX = this.x;
+    this.prevY = this.y;
+    this.prevPitch = this.pitch;
+    this.maxFuel = burnTime(gear);
+    this.fuel = this.maxFuel;
+    this.mass = totalMass(gear);
+    this.lightness = PANDA_MASS / this.mass;
   }
 
   get speed(): number {
@@ -132,6 +150,9 @@ export class Flight {
   }
 
   step(dt: number, input: FlightInput): void {
+    this.prevX = this.x;
+    this.prevY = this.y;
+    this.prevPitch = this.pitch;
     if (this.phase === 'ready' || this.phase === 'done') return;
     this.time += dt;
     const canBoost = input.boost && this.fuel > 0 && this.gear.rocket.thrust > 0;
@@ -158,10 +179,10 @@ export class Flight {
 
   private stepRamp(dt: number, boost: boolean): void {
     const p = rampAt(this.ramp, this.rampS);
-    const mu = this.gear.sled.friction;
+    const mu = this.gear.sled.friction * RAMP_FRICTION_SCALE;
     let a = -GRAVITY * Math.sin(p.angle) - mu * GRAVITY * Math.cos(p.angle);
-    a -= BODY_DRAG * this.gear.sled.drag * this.rampV * this.rampV;
-    if (boost) a += this.gear.rocket.thrust;
+    a -= BODY_DRAG * this.gear.sled.drag * this.rampV * this.rampV * this.lightness;
+    if (boost) a += this.gear.rocket.thrust * this.lightness;
     this.rampV = Math.max(0.5, this.rampV + a * dt);
     this.rampS += this.rampV * dt;
     const q = rampAt(this.ramp, this.rampS);
@@ -202,16 +223,16 @@ export class Flight {
         BODY_DRAG * sled.drag * glider.tuck * (1 + BROADSIDE_DRAG * sinA * sinA) +
         glider.drag +
         kLift * (glider.induced * cl * cl + WING_PLATE_DRAG * sinA * sinA);
-      const drag = dragK * q;
-      ax += -uy * lift - ux * drag;
-      ay += ux * lift - uy * drag;
+      const drag = dragK * q * this.lightness;
+      ax += -uy * lift * this.lightness - ux * drag;
+      ay += ux * lift * this.lightness - uy * drag;
       this.stalled = glider.lift > 0 && Math.abs(alpha) > stall;
     }
     this.angleOfAttack = alpha;
 
     if (boost) {
-      ax += Math.cos(this.pitch) * rocket.thrust;
-      ay += Math.sin(this.pitch) * rocket.thrust;
+      ax += Math.cos(this.pitch) * rocket.thrust * this.lightness;
+      ay += Math.sin(this.pitch) * rocket.thrust * this.lightness;
     }
 
     // Pitch: player input fights a weathervane torque that turns the nose into the wind.
@@ -221,7 +242,8 @@ export class Flight {
       this.pitch += input.pitch * PITCH_RATE * 0.25 * dt;
     } else {
       const stability = glider.stability * clamp(v / 12, 0, 1) * rho;
-      this.pitch += (input.pitch * PITCH_RATE - stability * Math.sin(alpha)) * dt;
+      const rate = PITCH_RATE * glider.control * Math.sqrt(this.lightness);
+      this.pitch += (input.pitch * rate - stability * Math.sin(alpha)) * dt;
     }
     this.pitch = wrapAngle(this.pitch);
 

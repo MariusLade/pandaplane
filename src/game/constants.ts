@@ -2,10 +2,19 @@
 export const GRAVITY = 9.81;
 /** Scale height of the (very compressed) atmosphere; air thins with altitude. */
 export const ATMO_SCALE = 2600;
-/** Height of the plateau the ramp stands on, above the valley floor. */
-export const CLIFF_HEIGHT = 40;
-/** Horizontal run of the cliff face. */
-export const CLIFF_RUN = 38;
+/** The launch mountain: flat run-out at its foot, then a slope this steep. */
+export const MOUNTAIN_FOOT = 4;
+export const MOUNTAIN_SLOPE = 0.84; // ~40 degrees
+export const MOUNTAIN_BEND = 26; // metres over which the slope steepens
+export const MOUNTAIN_PEAK = 150; // summit height
+/** Length of the kicker that curves up at the bottom of the ramp. */
+export const KICKER_LENGTH = 14;
+/** Clearance between the mountain surface and the ramp deck. */
+export const DECK_CLEARANCE = 0.7;
+/** The panda's own weight in kg; aerodynamic numbers are tuned for this. */
+export const PANDA_MASS = 100;
+/** Ramp decks are icy: sled friction is scaled by this on the ramp. */
+export const RAMP_FRICTION_SCALE = 0.55;
 /** Distance that counts as "reaching Panda Paradise". */
 export const GOAL_DISTANCE = 7000;
 /** Panda's collision radius against the ground. */
@@ -29,7 +38,7 @@ export const PITCH_RATE = 2.4;
 export const BOUNCE_SPEED = 7;
 export const RESTITUTION = 0.3;
 /** Base ground friction (added to the sled's friction). */
-export const GROUND_FRICTION = 0.24;
+export const GROUND_FRICTION = 0.16;
 /** Friction applied to the hard part of an impact. */
 export const IMPACT_FRICTION = 0.12;
 

@@ -1,10 +1,10 @@
-import { clamp, mixRgb, rgb } from '../core/math';
+import { clamp, lerp, mixRgb, rgb, wrapAngle } from '../core/math';
 import { PANDA_RADIUS } from '../game/constants';
 import type { Flight, FlightEvent } from '../game/flight';
 import { biomeAt, type Pickup, type World } from '../game/world';
 import { Background } from './background';
 import { Camera } from './camera';
-import { drawPanda, type Mood } from './panda';
+import { drawPanda, nozzleOffset, type Mood } from './panda';
 import { Particles } from './particles';
 import { drawPickups } from './pickups';
 import { drawDecor, drawRamp, drawSigns, drawTerrain } from './terrain';
@@ -19,6 +19,9 @@ interface Streak {
   life: number;
 }
 
+/** Metres to raise an enlarged panda so it still rests on the ground. */
+const lift = (scale: number, ppm: number): number => ((scale - ppm) * PANDA_RADIUS) / ppm;
+
 export class Renderer {
   readonly cam = new Camera();
   readonly particles = new Particles();
@@ -27,6 +30,9 @@ export class Renderer {
   private pickBuf: Pickup[] = [];
   private streaks: Streak[] = [];
   private dpr = 1;
+  /** Panda pose interpolated between the last two physics steps (smooth at any frame rate). */
+  private view = { x: 0, y: 0, pitch: 0 };
+  private speech = { text: '', time: 0, duration: 0 };
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -53,17 +59,34 @@ export class Renderer {
     return Math.max(this.cam.ppm, min);
   }
 
+  /** Blend the last two physics states; call once per frame before drawing. */
+  interpolate(flight: Flight, alpha: number): void {
+    const a = clamp(alpha, 0, 1);
+    this.view.x = lerp(flight.prevX, flight.x, a);
+    this.view.y = lerp(flight.prevY, flight.y, a);
+    this.view.pitch = flight.prevPitch + wrapAngle(flight.pitch - flight.prevPitch) * a;
+  }
+
+  /** Show a speech bubble over the panda. */
+  say(text: string, duration = 1.8): void {
+    this.speech = { text, time: 0, duration };
+  }
+
   updateCamera(flight: Flight, mode: CameraMode, dt: number, snap = false): void {
     const cam = this.cam;
     const world = flight.world;
-    if (mode === 'ramp' || mode === 'hangar') {
+    if (mode === 'hangar') {
+      // The whole ramp, from the start gate down to the kicker.
       const r = flight.ramp;
-      const cx = (r.top.x + r.lip.x) / 2 + 6;
-      const span = Math.max(48, (r.lip.x - r.top.x) * 1.5 + 20);
-      // In the hangar the UI covers the top of the screen, so frame the ramp low.
-      const viewH = (cam.h * span) / Math.min(cam.w, cam.h * 1.6);
-      const cy = mode === 'hangar' ? r.minY + viewH * 0.32 : (r.top.y + r.minY) / 2;
-      cam.follow(cx, cy, span, world.groundY(cx) - 1000, dt, snap);
+      const cx = (r.top.x + r.lip.x) / 2 + 10;
+      const span = Math.max(60, (r.lip.x - r.top.x) * 1.35 + 40);
+      cam.follow(cx, r.top.y * 0.5, span, -1000, dt, snap);
+      return;
+    }
+    if (mode === 'ramp') {
+      // Close on the panda at the start gate, looking down the slope.
+      const r = flight.ramp;
+      cam.follow(r.top.x + 14, r.top.y - 7, 56, -1000, dt, snap);
       return;
     }
     const speed = flight.speed;
@@ -73,11 +96,11 @@ export class Renderer {
     const vx = flight.phase === 'air' ? flight.vx : speed;
     const vy = flight.phase === 'air' ? flight.vy : 0;
     const lead = clamp(vx * 0.35, -span * 0.2, span * 0.22);
-    const tx = flight.x + lead;
+    const tx = this.view.x + lead;
     // Drop the camera towards the ground so the landing zone stays in view while low.
     const drop = Math.min(agl * 0.6, viewH * 0.3);
-    const ty = flight.y - drop + clamp(vy * 0.2, -span * 0.12, span * 0.12);
-    cam.follow(tx, ty, span, Math.min(world.groundY(flight.x), world.groundY(tx)), dt, snap);
+    const ty = this.view.y - drop + clamp(vy * 0.2, -span * 0.12, span * 0.12);
+    cam.follow(tx, ty, span, Math.min(world.groundY(this.view.x), world.groundY(tx)), dt, snap);
   }
 
   /** Spawn visual effects for simulation events. */
@@ -121,15 +144,17 @@ export class Renderer {
     const p = this.particles;
     const scale = this.pandaScale() / this.cam.ppm;
     if (flight.boosting) {
-      const c = Math.cos(flight.pitch);
-      const s = Math.sin(flight.pitch);
-      // Nozzle sits at local (-0.85, -0.48) with +y down -> world offset.
-      const lx = -0.9 * scale;
-      const ly = 0.48 * scale;
-      const nx = flight.x + lx * c - ly * s;
-      const ny = flight.y + lx * s + ly * c;
+      const c = Math.cos(this.view.pitch);
+      const s = Math.sin(this.view.pitch);
+      // Nozzle offset is in panda-local space (+y down) -> world offset.
+      const noz = nozzleOffset(flight.gear.rocket.style);
+      const lx = noz.x * scale;
+      const ly = -noz.y * scale;
+      const nx = this.view.x + lx * c - ly * s;
+      const ny = this.view.y + lift(scale, this.cam.ppm) + lx * s + ly * c;
       const vx = flight.phase === 'air' ? flight.vx : 0;
       const vy = flight.phase === 'air' ? flight.vy : 0;
+      const ion = flight.gear.rocket.style === 'ion';
       for (let i = 0; i < 3; i++) {
         p.spawn({
           kind: 'flame',
@@ -139,12 +164,12 @@ export class Renderer {
           vy: vy * 0.6 - s * 12 + (Math.random() - 0.5) * 3,
           life: 0.25,
           size: 0.35 * Math.min(scale, 4),
-          color: '#ffb238',
+          color: ion ? '#7fd8ff' : '#ffb238',
           gravity: 0,
           drag: 2,
         });
       }
-      if (Math.random() < dt * 40) {
+      if (!ion && Math.random() < dt * 40) {
         p.spawn({
           kind: 'smoke',
           x: nx,
@@ -227,7 +252,7 @@ export class Renderer {
     drawTerrain(ctx, cam, world);
     drawDecor(ctx, cam, world, world.seed);
     drawSigns(ctx, cam, world);
-    drawRamp(ctx, cam, flight.ramp);
+    drawRamp(ctx, cam, flight.ramp, world);
 
     this.pickBuf.length = 0;
     world.pickupsIn(cam.wx(-50), cam.wx(cam.w + 50), this.pickBuf);
@@ -237,12 +262,11 @@ export class Renderer {
 
     const scale = this.pandaScale();
     // When drawn larger than life, lift the panda so it still rests on the ground.
-    const lift = (scale - cam.ppm) * PANDA_RADIUS;
-    const sx = cam.sx(flight.x);
-    const sy = cam.sy(flight.y) - lift;
+    const sx = cam.sx(this.view.x);
+    const sy = cam.sy(this.view.y + lift(scale, cam.ppm));
     const speed = flight.speed;
     drawPanda(ctx, sx, sy, scale, flight.gear, {
-      angle: flight.pitch,
+      angle: this.view.pitch,
       time,
       speed,
       boosting: flight.boosting,
@@ -251,5 +275,46 @@ export class Renderer {
     });
 
     this.drawStreaks(flight);
+    this.drawSpeech(sx, sy - scale * 1.4, dt);
+  }
+
+  private drawSpeech(x: number, y: number, dt: number): void {
+    const sp = this.speech;
+    if (!sp.text) return;
+    sp.time += dt;
+    if (sp.time > sp.duration) {
+      sp.text = '';
+      return;
+    }
+    const ctx = this.ctx;
+    const pop = Math.min(1, sp.time / 0.12);
+    const fade = Math.min(1, (sp.duration - sp.time) / 0.25);
+    ctx.save();
+    ctx.globalAlpha = fade;
+    ctx.font = '600 17px Fredoka, ui-rounded, system-ui, sans-serif';
+    const w = ctx.measureText(sp.text).width + 22;
+    const h = 32;
+    const bx = clamp(x + 10, 8, this.cam.w - w - 8);
+    const by = clamp(y - h - 4, 8, this.cam.h - h - 8);
+    ctx.translate(bx + w / 2, by + h);
+    ctx.scale(0.6 + 0.4 * pop, 0.6 + 0.4 * pop);
+    ctx.translate(-(bx + w / 2), -(by + h));
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#1d2340';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, w, h, 14);
+    ctx.moveTo(bx + 16, by + h);
+    ctx.lineTo(clamp(x, bx + 6, bx + w - 6), by + h + 12);
+    ctx.lineTo(bx + 30, by + h);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(bx + 15, by + h - 3, 17, 4);
+    ctx.fillStyle = '#1d2340';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(sp.text, bx + 11, by + h / 2 + 1);
+    ctx.restore();
   }
 }

@@ -1,6 +1,6 @@
 import { clamp, hexToRgb, invLerp, smoothstep, type RGB } from '../core/math';
 import { fbm1, hash, mulberry32 } from '../core/rng';
-import { CLIFF_HEIGHT, CLIFF_RUN, GOAL_DISTANCE } from './constants';
+import { GOAL_DISTANCE, MOUNTAIN_BEND, MOUNTAIN_FOOT, MOUNTAIN_PEAK, MOUNTAIN_SLOPE } from './constants';
 
 export type Decor = 'snowpine' | 'pine' | 'flowers' | 'bamboo';
 
@@ -79,6 +79,34 @@ export const PICKUP_VALUE: Record<PickupKind, number> = { coin: 4, bigcoin: 25, 
 const CHUNK = 60;
 
 /**
+ * Height of the launch mountain at x <= 0 (the valley floor is at 0). It is a
+ * smooth shape so the ramp built on it rides without bumps: flat at the foot,
+ * steepening into a ~40 degree slope, rounding off at the summit.
+ */
+export function mountainHeight(x: number): number {
+  const d = -x - MOUNTAIN_FOOT;
+  if (d <= 0) return 0;
+  const L = MOUNTAIN_BEND;
+  const k = d / L;
+  const raw = d < L ? MOUNTAIN_SLOPE * L * (k * k * k - (k * k * k * k) / 2) : MOUNTAIN_SLOPE * (d - L / 2);
+  const shoulder = MOUNTAIN_PEAK - 20;
+  if (raw <= shoulder) return raw;
+  return MOUNTAIN_PEAK - 20 * Math.exp(-(raw - shoulder) / 20);
+}
+
+/** Horizontal distance from the lip to where the mountain reaches `h`. */
+export function mountainDistanceForHeight(h: number): number {
+  let lo = 0;
+  let hi = 2000;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (mountainHeight(-mid) < h) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/**
  * The procedural world. Terrain depends only on `seed`, so the landscape is the
  * same every day; pickups depend on `pickupSeed`, so they move around between
  * flights.
@@ -91,7 +119,7 @@ export class World {
     readonly pickupSeed: number,
   ) {}
 
-  /** Valley terrain without the cliff blend. */
+  /** Rolling hills beyond the launch site. */
   private valley(x: number): number {
     const s = this.seed;
     // Hills grow taller the further you go, so later flights need altitude.
@@ -99,20 +127,21 @@ export class World {
     const broad = fbm1(s, x / 260, 4) * amp;
     const ridge = Math.max(0, fbm1(s + 99, x / 620, 2)) * amp * 1.6;
     const detail = fbm1(s + 7, x / 34, 2) * 1.6;
-    return 6 + broad + ridge + detail;
+    return broad + ridge + detail;
   }
 
   groundY(x: number): number {
     if (x <= 0) {
-      // Plateau behind the ramp, with a gentle back slope for scenery.
-      return CLIFF_HEIGHT + fbm1(this.seed + 3, x / 30, 2) * 1.2 * clamp(-x / 30, 0, 1);
+      const m = mountainHeight(x);
+      // Rocky bumps far up the mountain, well away from any ramp.
+      const rough = clamp((-x - 170) / 40, 0, 1);
+      return m + (rough > 0 ? fbm1(this.seed + 3, x / 25, 3) * 6 * rough : 0);
     }
-    const k = smoothstep(clamp(x / CLIFF_RUN, 0, 1));
-    const v = this.valley(x);
-    // Flatten the valley next to the cliff so first flights have a fair runway.
-    const settle = smoothstep(clamp((x - CLIFF_RUN) / 140, 0, 1));
-    const valley = 4 + (v - 4) * settle;
-    return CLIFF_HEIGHT + (valley - CLIFF_HEIGHT) * k;
+    // A gentle downhill run-out first, so short hops still slide a fair way,
+    // then the procedural hills fade in.
+    const runout = -14 * smoothstep(clamp(x / 200, 0, 1));
+    const hills = smoothstep(clamp((x - 40) / 260, 0, 1));
+    return runout + this.valley(x) * hills;
   }
 
   slope(x: number): number {

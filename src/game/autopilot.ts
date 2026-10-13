@@ -7,8 +7,8 @@ import type { Flight, FlightInput } from './flight';
  * rocket climbing, then hold the angle of attack for the best glide ratio.
  */
 export function autopilot(f: Flight, climbDeg = 32): FlightInput {
-  const { glider, sled, rocket } = f.gear;
-  const hasFuel = f.fuel > 0 && rocket.thrust > 0;
+  const { glider, sled } = f.gear;
+  const hasFuel = f.fuel > 0;
   if (f.phase !== 'air') return { pitch: 0, boost: hasFuel };
 
   let target: number;

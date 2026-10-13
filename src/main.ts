@@ -5,18 +5,21 @@ import { autopilot } from './game/autopilot';
 import { computeEarnings, updateRecords } from './game/economy';
 import { Flight, type FlightInput } from './game/flight';
 import { clearSave, loadSave, newSave, writeSave, type SaveData } from './game/save';
-import { loadoutFor, nextTier, type Category, type Levels } from './game/upgrades';
+import { findItem, loadoutByIndex, loadoutFor, type Category } from './game/upgrades';
 import { biomeAt, World } from './game/world';
 import type { Mood } from './render/panda';
 import { Renderer, type CameraMode } from './render/renderer';
 import { $ } from './ui/dom';
 import { Hud } from './ui/hud';
+import { buyQuip, quip, resultQuip } from './ui/quips';
 import { Screens } from './ui/screens';
 
 type Mode = 'title' | 'hangar' | 'flight' | 'results' | 'victory';
 
 const STEP = 1 / 120;
-const DEMO_LEVELS: Levels = { ramp: 3, sled: 3, glider: 3, rocket: 2, fuel: 2 };
+const DEMO_GEAR = loadoutByIndex({ ramp: 4, sled: 4, glider: 6, rocket: 3, fuel: 3 });
+/** Minimum seconds between the panda's in-flight comments. */
+const CHATTER_COOLDOWN = 2.5;
 
 class Game {
   private save: SaveData;
@@ -32,6 +35,9 @@ class Game {
   private lastImpact = 0;
   private biomeName = '';
   private pendingVictory = false;
+  private lastChatter = -10;
+  private wasBoosting = false;
+  private wasStalled = false;
   /** `?autopilot` in the URL lets the computer fly (handy for testing and demos). */
   private autopilot = new URLSearchParams(location.search).has('autopilot');
 
@@ -67,7 +73,10 @@ class Game {
         this.renderer.bg.setSeed(this.save.worldSeed);
         this.toHangar();
       },
-      buy: (c) => this.buy(c),
+      openShop: (c) => this.openShop(c),
+      closeShop: () => this.toHangar(quip('hangar')),
+      buy: (c, id) => this.buy(c, id),
+      equip: (c, id) => this.equip(c, id),
       launch: () => this.launch(),
       toTitle: () => this.toTitle(),
       toggleMute: () => {
@@ -105,10 +114,6 @@ class Game {
     requestAnimationFrame((t) => this.frame(t));
   }
 
-  private get levels(): Levels {
-    return this.save.levels;
-  }
-
   private newWorld(): void {
     this.world = new World(this.save.worldSeed, this.save.worldSeed + this.save.day * 7919);
   }
@@ -116,7 +121,7 @@ class Game {
   private makeDemo(): Flight {
     const world = new World(this.save.worldSeed, (Math.random() * 1e9) | 0);
     this.world = world;
-    return new Flight(world, loadoutFor(DEMO_LEVELS));
+    return new Flight(world, DEMO_GEAR);
   }
 
   private persist(): void {
@@ -134,35 +139,58 @@ class Game {
     this.screens.showTitle(this.hasSave, this.sound.muted);
   }
 
-  private toHangar(): void {
+  private toHangar(says?: string): void {
     this.mode = 'hangar';
     this.newWorld();
-    this.flight = new Flight(this.world, loadoutFor(this.levels));
+    this.flight = new Flight(this.world, loadoutFor(this.save.equipped));
     this.renderer.particles.list.length = 0;
     this.renderer.updateCamera(this.flight, 'hangar', 0, true);
     this.showFlightUi(false);
-    this.screens.showHangar(this.save);
+    this.screens.showHangar(this.save, says ?? quip(this.save.day === 1 ? 'hangarFirst' : 'hangar'));
   }
 
-  private buy(category: Category): void {
-    const next = nextTier(category, this.levels);
-    if (!next || this.save.money < next.cost) {
+  private openShop(category: Category, says?: string): void {
+    this.screens.showShop(this.save, category, says ?? `Let's see what's in the ${category} shop…`);
+  }
+
+  private refreshGear(): void {
+    this.flight = new Flight(this.world, loadoutFor(this.save.equipped));
+  }
+
+  private buy(category: Category, id: string): void {
+    const item = findItem(category, id);
+    if (!item) return;
+    if (this.save.owned[category].includes(id)) return this.equip(category, id);
+    if (this.save.money < item.cost) {
       this.sound.denied();
+      this.openShop(category, quip('broke'));
       return;
     }
-    this.save.money -= next.cost;
-    this.save.levels = { ...this.levels, [category]: this.levels[category] + 1 };
+    this.save.money -= item.cost;
+    this.save.owned = { ...this.save.owned, [category]: [...this.save.owned[category], id] };
+    this.save.equipped = { ...this.save.equipped, [category]: id };
     this.persist();
     this.sound.buy();
-    this.flight = new Flight(this.world, loadoutFor(this.levels));
-    this.screens.showHangar(this.save);
+    this.refreshGear();
+    this.openShop(category, buyQuip(category));
+  }
+
+  private equip(category: Category, id: string): void {
+    if (!this.save.owned[category].includes(id)) return;
+    this.save.equipped = { ...this.save.equipped, [category]: id };
+    this.persist();
+    this.refreshGear();
+    this.openShop(category, quip('equip'));
   }
 
   private launch(): void {
     this.mode = 'flight';
     this.newWorld();
-    this.flight = new Flight(this.world, loadoutFor(this.levels));
+    this.flight = new Flight(this.world, loadoutFor(this.save.equipped));
     this.screens.hide();
+    this.wasBoosting = false;
+    this.wasStalled = false;
+    this.lastChatter = -10;
     this.doneTimer = 0;
     this.lastImpact = 0;
     this.acc = 0;
@@ -201,6 +229,11 @@ class Game {
     const result = this.flight.result();
     const earnings = computeEarnings(result, this.save.best);
     const day = this.save.day;
+    const says = earnings.newRecords.includes('distance')
+      ? resultQuip('record')
+      : result.distance < this.save.best.distance * 0.5
+        ? resultQuip('short')
+        : resultQuip('meh');
     this.save.money += earnings.total;
     this.save.totalEarned += earnings.total;
     this.save.best = updateRecords(this.save.best, result);
@@ -213,7 +246,7 @@ class Game {
     this.persist();
     this.mode = 'results';
     this.showFlightUi(false);
-    this.screens.showResults(day, earnings, () => this.sound.cash());
+    this.screens.showResults(day, earnings, says, () => this.sound.cash());
   }
 
   private flightInput(): FlightInput {
@@ -263,6 +296,7 @@ class Game {
       }
       if (steps === 12) this.acc = 0;
       this.handleEvents();
+      this.chatter();
     }
 
     if (this.mode === 'flight') {
@@ -291,11 +325,54 @@ class Game {
     this.sound.setFlight(f.speed, f.boosting, active && this.mode === 'flight');
   }
 
+  /** The panda comments on what is happening, without spamming. */
+  private chatter(): void {
+    const f = this.flight;
+    if (f.phase !== 'air') return;
+    const free = this.time - this.lastChatter > CHATTER_COOLDOWN;
+    if (f.boosting && !this.wasBoosting && free) this.say(quip('boost'));
+    const stalling = f.stalled && !f.onGround;
+    if (stalling && !this.wasStalled && free) this.say(quip('stall'));
+    this.wasBoosting = f.boosting;
+    this.wasStalled = stalling;
+  }
+
+  private say(text: string, force = false): void {
+    if (!force && this.time - this.lastChatter < CHATTER_COOLDOWN) return;
+    this.lastChatter = this.time;
+    this.renderer.say(text);
+  }
+
   private handleEvents(): void {
     const f = this.flight;
     const audible = this.mode === 'flight';
     for (const ev of f.events) {
       this.renderer.effect(ev, f);
+      switch (ev.type) {
+        case 'launch':
+          this.say(quip('launch'), true);
+          break;
+        case 'impact':
+          if (ev.amount > 12) this.say(quip('crash'));
+          break;
+        case 'bigcoin':
+          this.say(quip('coin'));
+          break;
+        case 'ring':
+          this.say(quip('ring'));
+          break;
+        case 'balloon':
+          this.say(quip('balloon'));
+          break;
+        case 'goal':
+          this.say(quip('goal'), true);
+          break;
+        case 'done':
+          this.say(quip('done'), true);
+          break;
+        default:
+          break;
+      }
       if (!audible) continue;
       switch (ev.type) {
         case 'launch':
@@ -332,6 +409,9 @@ class Game {
     const f = this.flight;
     const onRamp = (this.mode === 'flight' || this.mode === 'title') && f.phase === 'ready';
     const camMode: CameraMode = this.mode === 'hangar' ? 'hangar' : onRamp ? 'ramp' : 'follow';
+    // Draw between the last two physics steps so motion is smooth at any refresh rate.
+    const simulating = (this.mode === 'flight' || this.mode === 'title') && !this.paused;
+    this.renderer.interpolate(f, simulating ? this.acc / STEP : 1);
     this.renderer.updateCamera(f, camMode, dt);
     this.renderer.draw(this.world, f, this.mood(), this.time, dt);
     if (this.mode === 'hangar') this.screens.tick(this.time);

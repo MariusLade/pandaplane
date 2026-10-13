@@ -1,6 +1,6 @@
 import { mixRgb, rgb, shade } from '../core/math';
 import { hash } from '../core/rng';
-import { CLIFF_HEIGHT, GOAL_DISTANCE } from '../game/constants';
+import { GOAL_DISTANCE } from '../game/constants';
 import type { Ramp } from '../game/ramp';
 import { biomeAt, type Decor, type World } from '../game/world';
 import type { Camera } from './camera';
@@ -79,7 +79,7 @@ export function drawDecor(ctx: CanvasRenderingContext2D, cam: Camera, world: Wor
   for (let c = c0; c <= c1; c++) {
     if (c % stride !== 0) continue;
     const r = hash(seed, c, 7);
-    if (c * DECOR_CELL > -8 && c * DECOR_CELL < 50) continue; // keep the cliff clear
+    if (c * DECOR_CELL > -175 && c * DECOR_CELL < 14) continue; // keep the ramp line clear
     const x = c * DECOR_CELL + hash(seed, c, 8) * DECOR_CELL;
     const b = biomeAt(x);
     const biome = hash(seed, c, 9) < b.t ? b.b : b.a;
@@ -260,59 +260,64 @@ function drawGoalGate(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm
   ctx.fillText('PANDA PARADISE', sx, sy - hgt * 0.88);
 }
 
-export function drawRamp(ctx: CanvasRenderingContext2D, cam: Camera, ramp: Ramp): void {
+export function drawRamp(ctx: CanvasRenderingContext2D, cam: Camera, ramp: Ramp, world: World): void {
   const ppm = cam.ppm;
   const pts = ramp.points;
   if (cam.sx(pts[0].x) > cam.w + 50 || cam.sx(ramp.lip.x) < -50) return;
-  const plank = Math.max(3, 0.5 * ppm);
-  const ground = CLIFF_HEIGHT;
+  const plank = Math.max(6, 0.9 * ppm);
 
-  // Trestle supports.
+  // Posts down to the hillside, with cross-bracing where the kicker lifts off.
   ctx.strokeStyle = '#6e4a2a';
-  ctx.lineWidth = Math.max(1.5, 0.22 * ppm);
-  const every = Math.max(1, Math.round(3.5 / pts[1].s));
-  let prev: { x: number; y: number } | null = null;
-  for (let i = 0; i < pts.length; i += every) {
+  ctx.lineWidth = Math.max(1.5, 0.2 * ppm);
+  const every = Math.max(1, Math.round(3 / ramp.step));
+  let prev: { x: number; y: number; g: number } | null = null;
+  ctx.beginPath();
+  for (let i = pts.length - 1; i >= 0; i -= every) {
     const p = pts[i];
+    const g = world.groundY(p.x);
     const sx = cam.sx(p.x);
-    ctx.beginPath();
     ctx.moveTo(sx, cam.sy(p.y));
-    ctx.lineTo(sx, cam.sy(ground));
-    ctx.stroke();
-    if (prev) {
-      ctx.beginPath();
-      ctx.moveTo(cam.sx(prev.x), cam.sy(prev.y - 0.5));
-      ctx.lineTo(sx, cam.sy(ground + (p.y - ground) * 0.35));
-      ctx.moveTo(cam.sx(prev.x), cam.sy(ground + (prev.y - ground) * 0.35));
-      ctx.lineTo(sx, cam.sy(p.y - 0.5));
-      ctx.stroke();
+    ctx.lineTo(sx, cam.sy(g) + 2);
+    if (prev && p.y - g > 1.4 && prev.y - prev.g > 1.4) {
+      ctx.moveTo(cam.sx(prev.x), cam.sy(prev.y - 0.4));
+      ctx.lineTo(sx, cam.sy(g + (p.y - g) * 0.3));
+      ctx.moveTo(cam.sx(prev.x), cam.sy(prev.g + (prev.y - prev.g) * 0.3));
+      ctx.lineTo(sx, cam.sy(p.y - 0.4));
     }
-    prev = p;
+    prev = { x: p.x, y: p.y, g };
   }
+  ctx.stroke();
 
-  // Deck.
+  // Deck: wooden rails with a snowy running surface.
   ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   ctx.beginPath();
   pts.forEach((p, i) => (i ? ctx.lineTo(cam.sx(p.x), cam.sy(p.y)) : ctx.moveTo(cam.sx(p.x), cam.sy(p.y))));
-  ctx.strokeStyle = '#8a5a32';
+  ctx.strokeStyle = '#5e3b1f';
+  ctx.lineWidth = plank + 3;
+  ctx.stroke();
+  ctx.strokeStyle = '#a06a3c';
   ctx.lineWidth = plank;
   ctx.stroke();
-  ctx.strokeStyle = '#e7f2ff';
-  ctx.lineWidth = Math.max(1.5, plank * 0.35);
+  ctx.strokeStyle = '#eef6ff';
+  ctx.lineWidth = Math.max(2, plank * 0.45);
   ctx.stroke();
   ctx.lineCap = 'butt';
 
-  // Flag at the top.
-  const top = pts[0];
-  const fx = cam.sx(top.x - 0.6);
-  const fy = cam.sy(top.y);
-  const pole = 4 * ppm;
-  ctx.fillStyle = '#5a3b20';
-  ctx.fillRect(fx - 1, fy - pole, Math.max(2, 0.12 * ppm), pole);
-  ctx.fillStyle = '#e2493b';
-  ctx.beginPath();
-  ctx.moveTo(fx, fy - pole);
-  ctx.lineTo(fx - 1.8 * ppm, fy - pole + 0.6 * ppm);
-  ctx.lineTo(fx, fy - pole + 1.2 * ppm);
-  ctx.fill();
+  // Start gate flags at the top and a striped marker on the lip.
+  const flag = (x: number, y: number, color: string) => {
+    const fx = cam.sx(x);
+    const fy = cam.sy(y);
+    const pole = 4 * ppm;
+    ctx.fillStyle = '#5a3b20';
+    ctx.fillRect(fx - 1, fy - pole, Math.max(2, 0.12 * ppm), pole);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(fx, fy - pole);
+    ctx.lineTo(fx - 1.8 * ppm, fy - pole + 0.6 * ppm);
+    ctx.lineTo(fx, fy - pole + 1.2 * ppm);
+    ctx.fill();
+  };
+  flag(pts[0].x - 0.6, pts[0].y, '#e2493b');
+  flag(ramp.lip.x + 0.4, world.groundY(ramp.lip.x + 0.4), '#2f7de1');
 }

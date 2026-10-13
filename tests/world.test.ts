@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CLIFF_HEIGHT } from '../src/game/constants';
 import { buildRamp, rampAt } from '../src/game/ramp';
 import { RAMPS } from '../src/game/upgrades';
-import { biomeAt, BIOMES, World } from '../src/game/world';
+import { biomeAt, BIOMES, mountainHeight, World } from '../src/game/world';
 import { fbm1, hash, mulberry32 } from '../src/core/rng';
 
 describe('rng', () => {
@@ -30,18 +29,24 @@ describe('rng', () => {
 describe('world', () => {
   const world = new World(1234, 99);
 
-  it('has a plateau at the launch site and a continuous ground', () => {
-    expect(world.groundY(-5)).toBeCloseTo(CLIFF_HEIGHT, 0);
-    let prev = world.groundY(0);
-    for (let x = 0.5; x < 8000; x += 0.5) {
+  it('has a mountain behind the launch site and a continuous ground', () => {
+    expect(world.groundY(0)).toBeCloseTo(0, 6);
+    expect(world.groundY(-100)).toBeGreaterThan(40);
+    let prev = world.groundY(-300);
+    for (let x = -299.5; x < 8000; x += 0.5) {
       const y = world.groundY(x);
       expect(Math.abs(y - prev)).toBeLessThan(1.5);
       prev = y;
     }
   });
 
-  it('valley sits well below the cliff', () => {
-    expect(world.groundY(120)).toBeLessThan(CLIFF_HEIGHT - 15);
+  it('the mountain rises monotonically to its summit', () => {
+    let prev = 0;
+    for (let x = 0; x > -400; x -= 1) {
+      const h = mountainHeight(x);
+      expect(h).toBeGreaterThanOrEqual(prev);
+      prev = h;
+    }
   });
 
   it('terrain depends only on the world seed', () => {
@@ -65,13 +70,18 @@ describe('world', () => {
 });
 
 describe('ramp', () => {
-  it('drops by the tier height and ends at x = 0 pointing up', () => {
-    for (const tier of RAMPS) {
-      const r = buildRamp(tier);
+  it('starts on the mountain at the tier drop and kicks up at x = 0', () => {
+    for (const item of RAMPS) {
+      const r = buildRamp(item);
       expect(r.lip.x).toBeCloseTo(0, 6);
-      expect(r.top.y - r.minY).toBeCloseTo(tier.height, 3);
-      expect(r.lip.angle).toBeGreaterThan(0);
+      // The start gate sits on the hillside, `height` above the valley floor.
+      expect(r.top.y).toBeCloseTo(item.height + 0.7, 1);
+      expect(r.lip.angle).toBeCloseTo((item.launchDeg * Math.PI) / 180, 6);
       expect(rampAt(r, r.length).x).toBeCloseTo(0, 6);
+      // Smooth: no sudden direction changes along the deck.
+      for (let i = 1; i < r.points.length; i++) {
+        expect(Math.abs(r.points[i].angle - r.points[i - 1].angle)).toBeLessThan(0.12);
+      }
     }
   });
 });

@@ -43,7 +43,7 @@ export class Hud {
     this.set(this.coins, money(f.coinMoney));
     const hasRocket = f.gear.rocket.thrust > 0;
     this.fuelWrap.hidden = !hasRocket;
-    if (hasRocket) this.style(this.fuelBar, 'width', `${((f.fuel / f.gear.fuel.seconds) * 100).toFixed(1)}%`);
+    if (hasRocket) this.style(this.fuelBar, 'width', `${((f.fuel / (f.maxFuel || 1)) * 100).toFixed(1)}%`);
     const p = Math.min(1, f.distance / GOAL_DISTANCE);
     this.style(this.progress, 'width', `${(p * 100).toFixed(2)}%`);
     this.style(this.marker, 'left', `${(p * 100).toFixed(2)}%`);

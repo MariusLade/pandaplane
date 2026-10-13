@@ -8,6 +8,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="description" content="A procedural flying game: help a panda learn to fly." />
     <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <title>Panda Plane</title>
   </head>
@@ -17,10 +20,10 @@
 
       <div id="hud" hidden>
         <div class="hud-stats">
-          <div><small>Distance</small><b id="hud-dist">0 m</b></div>
-          <div><small>Altitude</small><b id="hud-alt">0 m</b></div>
-          <div><small>Speed</small><b id="hud-speed">0 km/h</b></div>
-          <div><small>Coins</small><b id="hud-coins">$0</b></div>
+          <div class="hud-chip big"><i>📏</i><span><small>Distance</small><b id="hud-dist">0 m</b></span></div>
+          <div class="hud-chip"><i>⛰️</i><span><small>Height</small><b id="hud-alt">0 m</b></span></div>
+          <div class="hud-chip"><i>💨</i><span><small>Speed</small><b id="hud-speed">0 km/h</b></span></div>
+          <div class="hud-chip"><i>🪙</i><span><small>Coins</small><b id="hud-coins">$0</b></span></div>
         </div>
         <div class="hud-progress" aria-hidden="true">
           <div id="hud-progress-fill"></div>
@@ -28,7 +31,7 @@
           <div id="hud-progress-panda">🐼</div>
           <div class="hud-goal">🎋</div>
         </div>
-        <div id="hud-fuel"><small>Fuel</small><div class="fuel-track"><div id="hud-fuel-bar"></div></div></div>
+        <div id="hud-fuel" class="hud-chip"><i>🚀</i><span><small>Rocket fuel</small><span class="fuel-track"><span id="hud-fuel-bar"></span></span></span></div>
         <div id="hud-stall" hidden>STALL!</div>
       </div>
 

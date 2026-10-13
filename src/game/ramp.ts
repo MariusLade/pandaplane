@@ -1,6 +1,7 @@
-import { clamp, lerp, smoothstep } from '../core/math';
-import { CLIFF_HEIGHT } from './constants';
-import type { RampTier } from './upgrades';
+import { clamp, lerp } from '../core/math';
+import { DECK_CLEARANCE, KICKER_LENGTH } from './constants';
+import type { RampItem } from './upgrades';
+import { mountainHeight, mountainDistanceForHeight } from './world';
 
 export interface RampPoint {
   x: number;
@@ -12,62 +13,94 @@ export interface RampPoint {
 }
 
 export interface Ramp {
+  /** Points evenly spaced by arc length. */
   points: RampPoint[];
+  step: number;
   length: number;
   top: RampPoint;
   lip: RampPoint;
-  /** Lowest y along the ramp, used for drawing supports. */
-  minY: number;
-  baseY: number;
+  /** Where the kicker starts rising off the mountain. */
+  kickerStart: number;
 }
 
-const START_DEG = -44;
-const STEPS = 80;
+const STEP = 0.5;
 
 /**
- * Builds a ramp procedurally by integrating a direction curve: steep at the top,
- * bending smoothly up to the launch angle. The result is scaled so its vertical
- * drop matches the tier height, then placed so the lip sits at x = 0.
+ * The ramp is laid along the mountainside: it starts `height` metres up the
+ * slope, follows the hill down, and ends in a kicker at the foot of the
+ * mountain that curves up to the launch angle. The lip is always at x = 0.
  */
-export function buildRamp(tier: RampTier, baseY = CLIFF_HEIGHT): Ramp {
-  const raw: RampPoint[] = [];
-  let x = 0;
-  let y = 0;
-  const end = (tier.launchDeg * Math.PI) / 180;
-  const start = (START_DEG * Math.PI) / 180;
-  for (let i = 0; i <= STEPS; i++) {
-    const t = i / STEPS;
-    const k = smoothstep(clamp((t - 0.62) / 0.38, 0, 1));
-    const angle = lerp(start, end, k);
-    raw.push({ x, y, angle, s: i });
-    x += Math.cos(angle);
-    y += Math.sin(angle);
+export function buildRamp(item: RampItem): Ramp {
+  const tan = Math.tan((item.launchDeg * Math.PI) / 180);
+  const K = KICKER_LENGTH;
+  const hill = (x: number) => mountainHeight(x) + DECK_CLEARANCE;
+  // Kicker: a cubic Hermite curve that leaves the hillside tangentially and
+  // reaches the lip at exactly the launch angle.
+  const y0 = hill(-K);
+  const m0 = (hill(-K + 0.01) - hill(-K - 0.01)) / 0.02;
+  const y1 = DECK_CLEARANCE + (tan * K) / 2;
+  const m1 = tan;
+  const deckY = (x: number): number => {
+    if (x <= -K) return hill(x);
+    const t = (x + K) / K;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const y = (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * K * m0 + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * K * m1;
+    return Math.max(hill(x) - 0.4, y);
+  };
+
+  const xTop = -mountainDistanceForHeight(item.height);
+  // Dense polyline, then resample evenly by arc length.
+  const dense: { x: number; y: number; s: number }[] = [];
+  let s = 0;
+  let px = xTop;
+  let py = deckY(xTop);
+  dense.push({ x: px, y: py, s: 0 });
+  const n = Math.ceil(-xTop / 0.1);
+  for (let i = 1; i <= n; i++) {
+    const x = xTop * (1 - i / n);
+    const y = deckY(x);
+    s += Math.hypot(x - px, y - py);
+    dense.push({ x, y, s });
+    px = x;
+    py = y;
   }
-  const minRaw = Math.min(...raw.map((p) => p.y));
-  const scale = tier.height / (raw[0].y - minRaw);
-  const lipRaw = raw[raw.length - 1];
-  const lift = 0.8; // gap between the lowest ramp point and the plateau
-  const points = raw.map((p) => ({
-    x: (p.x - lipRaw.x) * scale,
-    y: (p.y - minRaw) * scale + baseY + lift,
-    angle: p.angle,
-    s: p.s * scale,
-  }));
+  const length = s;
+  // Evenly spaced by arc length so rampAt can index directly.
+  const count = Math.max(2, Math.ceil(length / STEP));
+  const step = length / count;
+  const points: RampPoint[] = [];
+  let j = 0;
+  for (let k = 0; k <= count; k++) {
+    const d = k * step;
+    while (j < dense.length - 2 && dense[j + 1].s < d) j++;
+    const a = dense[j];
+    const b = dense[j + 1];
+    const t = clamp((d - a.s) / (b.s - a.s || 1), 0, 1);
+    points.push({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), angle: 0, s: d });
+  }
+  for (let i = 0; i < points.length; i++) {
+    const a = points[Math.max(0, i - 1)];
+    const b = points[Math.min(points.length - 1, i + 1)];
+    points[i].angle = Math.atan2(b.y - a.y, b.x - a.x);
+  }
+  // The lip leaves at exactly the designed angle.
+  points[points.length - 1].angle = Math.atan(tan);
+
   return {
     points,
-    length: points[points.length - 1].s,
+    step,
+    length,
     top: points[0],
     lip: points[points.length - 1],
-    minY: baseY + lift,
-    baseY,
+    kickerStart: -K,
   };
 }
 
 /** Position and direction at arc length `s`. */
 export function rampAt(ramp: Ramp, s: number): RampPoint {
   const pts = ramp.points;
-  const step = pts[1].s;
-  const f = clamp(s / step, 0, pts.length - 1);
+  const f = clamp(s / ramp.step, 0, pts.length - 1);
   const i = Math.min(pts.length - 2, Math.floor(f));
   const t = f - i;
   const a = pts[i];
