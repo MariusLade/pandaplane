@@ -1,0 +1,10 @@
+{
+  "name": "Panda Plane",
+  "short_name": "PandaPlane",
+  "start_url": ".",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#4aa3ee",
+  "theme_color": "#4aa3ee",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

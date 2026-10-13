@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#4aa3ee" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="description" content="A procedural flying game: help a panda learn to fly." />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <title>Panda Plane</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+
+      <div id="hud" hidden>
+        <div class="hud-stats">
+          <div><small>Distance</small><b id="hud-dist">0 m</b></div>
+          <div><small>Altitude</small><b id="hud-alt">0 m</b></div>
+          <div><small>Speed</small><b id="hud-speed">0 km/h</b></div>
+          <div><small>Coins</small><b id="hud-coins">$0</b></div>
+        </div>
+        <div class="hud-progress" aria-hidden="true">
+          <div id="hud-progress-fill"></div>
+          <div id="hud-progress-best" title="Best"></div>
+          <div id="hud-progress-panda">🐼</div>
+          <div class="hud-goal">🎋</div>
+        </div>
+        <div id="hud-fuel"><small>Fuel</small><div class="fuel-track"><div id="hud-fuel-bar"></div></div></div>
+        <div id="hud-stall" hidden>STALL!</div>
+      </div>
+
+      <div id="toast"></div>
+      <button id="prompt" hidden>Press Space to slide!</button>
+
+      <div id="touch" hidden>
+        <div class="pad-left">
+          <button id="btn-up" aria-label="Nose up">▲</button>
+          <button id="btn-down" aria-label="Nose down">▼</button>
+        </div>
+        <button id="btn-boost" aria-label="Boost">BOOST</button>
+      </div>
+
+      <div id="screen" hidden></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
