@@ -11,12 +11,15 @@ import type { Mood } from './render/panda';
 import { Renderer, type CameraMode } from './render/renderer';
 import { $ } from './ui/dom';
 import { Hud } from './ui/hud';
+import { InstrumentPanel } from './ui/instruments';
 import { buyQuip, quip, resultQuip } from './ui/quips';
 import { Screens } from './ui/screens';
 
 type Mode = 'title' | 'hangar' | 'flight' | 'results' | 'victory';
 
 const STEP = 1 / 120;
+/** Seconds to admire the landing before the flight log appears. */
+const DONE_PAUSE = 0.8;
 const DEMO_GEAR = loadoutByIndex({ ramp: 4, sled: 4, glider: 6, rocket: 3, fuel: 3 });
 /** Minimum seconds between the panda's in-flight comments. */
 const CHATTER_COOLDOWN = 2.5;
@@ -45,6 +48,7 @@ class Game {
   private sound = new Sound();
   private renderer: Renderer;
   private hud = new Hud();
+  private instruments = new InstrumentPanel();
   private screens: Screens;
   private touch = $('#touch');
   private prompt = $('#prompt');
@@ -105,7 +109,12 @@ class Game {
       },
     });
 
-    window.addEventListener('resize', () => this.renderer.resize());
+    window.addEventListener('resize', () => {
+      this.renderer.resize();
+      this.instruments.layout();
+    });
+    // Tap the screen after a flight ends to jump straight to the results.
+    $('#game').addEventListener('pointerdown', () => this.skipDoneWait());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.mode === 'flight' && this.flight.phase !== 'done') this.setPaused(true);
     });
@@ -211,6 +220,8 @@ class Game {
     this.biomeName = biomeAt(0).a.name;
     this.showFlightUi(true);
     this.hud.configure(this.flight);
+    this.instruments.configure(this.flight);
+    this.instruments.show(true);
     this.honkTimer = 0;
     this.prompt.hidden = false;
     this.prompt.textContent = this.input.touchSeen || matchMedia('(pointer: coarse)').matches ? 'Tap to slide!' : 'Press Space to slide!';
@@ -225,6 +236,7 @@ class Game {
 
   private showFlightUi(on: boolean): void {
     this.hud.show(on);
+    this.instruments.show(on);
     const touch = this.input.touchSeen || matchMedia('(pointer: coarse)').matches;
     this.touch.hidden = !(on && touch);
     $('#btn-boost').hidden = this.flight.gear.rocket.thrust <= 0;
@@ -239,6 +251,11 @@ class Game {
       this.sound.setFlight(0, false, false);
     } else this.screens.hide();
     this.last = performance.now();
+  }
+
+  private skipDoneWait(): void {
+    // A short grace period so a button held through the landing doesn't skip by accident.
+    if (this.mode === 'flight' && this.flight.phase === 'done' && this.doneTimer > 0.15) this.finishFlight();
   }
 
   private finishFlight(): void {
@@ -292,7 +309,16 @@ class Game {
     this.time += dt;
     const f = this.flight;
 
+    if ((this.mode === 'results' || this.mode === 'victory') && this.input.wasPressed('confirm')) {
+      this.screens.advance();
+      return;
+    }
+
     if (this.mode === 'flight') {
+      if (f.phase === 'done' && (this.input.wasPressed('confirm') || this.input.wasPressed('boost'))) {
+        this.skipDoneWait();
+        return;
+      }
       if (this.input.wasPressed('pause')) {
         this.setPaused(true);
         return;
@@ -326,7 +352,7 @@ class Game {
       }
       if (f.phase === 'done') {
         this.doneTimer += dt;
-        if (this.doneTimer > 1.6) this.finishFlight();
+        if (this.doneTimer > DONE_PAUSE) this.finishFlight();
       }
     } else if (this.mode === 'title' && f.phase === 'done') {
       this.doneTimer += dt;
@@ -455,6 +481,7 @@ class Game {
     this.renderer.interpolate(f, simulating ? this.acc / STEP : 1);
     this.renderer.updateCamera(f, camMode, dt);
     this.renderer.draw(this.world, f, this.mood(), this.time, dt);
+    if (this.mode === 'flight') this.instruments.draw(f, this.time, dt);
     if (this.mode === 'hangar') this.screens.tick(this.time);
   }
 }

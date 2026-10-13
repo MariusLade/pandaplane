@@ -180,7 +180,6 @@ export class Background {
       ctx.closePath();
       ctx.fillStyle = rgb(color);
       ctx.fill();
-      if (li > 0) this.drawTreeLine(ctx, tops, step, offset, li, color, b.t > 0.5 ? b.b.decor : b.a.decor);
 
       // Snow caps on the far ranges in the snowy biome.
       if (li < 2 && snowy > 0.05) {
@@ -207,48 +206,6 @@ export class Background {
         ctx.fill();
       }
     }
-  }
-
-  /** Silhouettes of a forest along a mountain ridge, matching the biome. */
-  private drawTreeLine(
-    ctx: CanvasRenderingContext2D,
-    tops: number[],
-    step: number,
-    offset: number,
-    layer: number,
-    color: RGB,
-    decor: string,
-  ) {
-    const spacing = layer === 1 ? 7 : 11;
-    const scale = layer === 1 ? 0.7 : 1.15;
-    const k0 = Math.floor(offset / spacing);
-    const k1 = Math.floor((offset + (tops.length - 1) * step) / spacing);
-    ctx.fillStyle = rgb(shade(color, -0.07));
-    ctx.beginPath();
-    for (let k = k0; k <= k1; k++) {
-      const r = hash(this.seed + layer, k, 33);
-      // Forest patches, not a hedge.
-      if (fbm1(this.seed + layer * 7, k * 0.06, 2) < -0.1 || r < 0.15) continue;
-      const sx = k * spacing - offset + (r - 0.5) * spacing * 0.6;
-      const i = Math.max(0, Math.min(tops.length - 1, Math.round(sx / step)));
-      const y = tops[i] + 2;
-      const hgt = (10 + r * 12) * scale;
-      if (decor === 'bamboo') {
-        ctx.rect(sx - 1, y - hgt * 1.3, 2, hgt * 1.3);
-        ctx.moveTo(sx + 5, y - hgt * 1.2);
-        ctx.ellipse(sx + 2.5, y - hgt * 1.2, 4, 1.5, -0.4, 0, Math.PI * 2);
-      } else if (decor === 'flowers') {
-        ctx.moveTo(sx + hgt * 0.45, y - hgt * 0.6);
-        ctx.arc(sx, y - hgt * 0.6, hgt * 0.45, 0, Math.PI * 2);
-        ctx.rect(sx - 1, y - hgt * 0.4, 2, hgt * 0.4);
-      } else {
-        ctx.moveTo(sx - hgt * 0.32, y);
-        ctx.lineTo(sx, y - hgt);
-        ctx.lineTo(sx + hgt * 0.32, y);
-        ctx.closePath();
-      }
-    }
-    ctx.fill();
   }
 
   /** World-space clouds the panda flies past. Drawn after terrain, before the panda. */

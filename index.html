@@ -21,9 +21,6 @@
       <div id="hud" hidden>
         <div class="hud-stats">
           <div class="hud-chip big"><i>📏</i><span><small>Distance</small><b id="hud-dist">0 m</b></span></div>
-          <div class="hud-chip" id="hud-speed-chip"><i>💨</i><span><small>Speed</small><b id="hud-speed">0 km/h</b><em id="hud-climb"></em></span></div>
-          <div class="hud-chip" id="hud-alt-chip"><i>⛰️</i><span><small id="hud-alt-label">Altitude</small><b id="hud-alt">0 m</b></span></div>
-          <div class="hud-chip" id="hud-pitch-chip"><i>📐</i><span><small>Pitch</small><b id="hud-pitch">0°</b></span></div>
           <div class="hud-chip"><i>🪙</i><span><small>Coins</small><b id="hud-coins">$0</b></span></div>
           <div class="hud-chip" id="hud-flaps-chip"><i>🪶</i><span><small>Flaps</small><b id="hud-flaps">0</b></span></div>
         </div>
@@ -33,25 +30,9 @@
           <div id="hud-progress-panda">🐼</div>
           <div class="hud-goal">🎋</div>
         </div>
-        <div id="hud-right">
-          <div id="hud-fuel" class="hud-chip"><i>🚀</i><span><small>Rocket fuel</small><span class="fuel-track"><span id="hud-fuel-bar"></span></span></span></div>
-          <div id="hud-horizon" class="instrument">
-            <div class="dial">
-              <div class="dial-ground"></div>
-              <div class="dial-path" id="hud-path"></div>
-              <div class="dial-nose" id="hud-nose"></div>
-              <div class="dial-hub"></div>
-            </div>
-            <small>Nose <b id="hud-nose-num">0°</b> · Path <b id="hud-path-num">0°</b></small>
-          </div>
-          <div id="hud-aoa" class="instrument">
-            <small>Stall margin <b id="hud-aoa-num"></b></small>
-            <span class="aoa-track"><span id="hud-aoa-fill"></span></span>
-          </div>
-          <div id="hud-horn" class="instrument lamp">STALL</div>
-        </div>
       </div>
 
+      <canvas id="instruments" hidden></canvas>
       <div id="toast"></div>
       <button id="prompt" hidden>Press Space to slide!</button>
 

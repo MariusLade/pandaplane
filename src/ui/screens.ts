@@ -57,7 +57,13 @@ export class Screens {
   private root = $('#screen');
   private previews: Preview[] = [];
 
-  constructor(private act: ScreenActions) {}
+  constructor(private act: ScreenActions) {
+    // Tapping anywhere on the results / victory screen (except a button) advances.
+    this.root.addEventListener('pointerdown', (e) => {
+      if ((e.target as HTMLElement).closest('button')) return;
+      if (this.root.querySelector('.results, .victory')) this.advance();
+    });
+  }
 
   hide(): void {
     this.root.replaceChildren();
@@ -67,6 +73,7 @@ export class Screens {
   }
 
   private mount(el: HTMLElement, backdrop = ''): void {
+    this.skipResults = null;
     this.root.replaceChildren(el);
     this.root.hidden = false;
     this.root.className = backdrop;
@@ -314,19 +321,30 @@ export class Screens {
     return `<div class="features">${shows}</div><div class="slots">Slot${item.slots.length > 1 ? 's' : ''}: ${slots}</div>${note}`;
   }
 
+  /** Finishes the results animation, if one is playing. Returns false when there was nothing to skip. */
+  private skipResults: (() => boolean) | null = null;
+
+  /** Space / Enter / tap on the results: first finish the animation, then continue. */
+  advance(): void {
+    if (this.skipResults?.()) return;
+    if (this.root.querySelector('.results')) this.act.continueFromResults();
+    else if (this.root.querySelector('.victory')) this.act.continueFromVictory();
+  }
+
   showResults(day: number, earnings: Earnings, says: string, onDone: () => void): void {
     const rows = earnings.lines
       .map(
         (l, i) =>
-          `<li style="animation-delay:${0.15 + i * 0.12}s"><span>${l.label}</span><em>${l.detail}</em><b>+${money(l.amount)}</b></li>`,
+          `<li style="animation-delay:${0.05 + i * 0.07}s"><span>${l.label}</span><em>${l.detail}</em><b>+${money(l.amount)}</b></li>`,
       )
       .join('');
     const stamps = earnings.newRecords
       .map(
         (r, i) =>
-          `<span class="stamp" style="--r:${(i % 2 ? 1 : -1) * (4 + i * 3)}deg;animation-delay:${0.9 + i * 0.25}s">New ${r === 'airtime' ? 'air time' : r} record!</span>`,
+          `<span class="stamp" style="--r:${(i % 2 ? 1 : -1) * (4 + i * 3)}deg;animation-delay:${0.45 + i * 0.12}s">New ${r === 'airtime' ? 'air time' : r} record!</span>`,
       )
       .join('');
+    const hint = isTouch() ? 'Tap anywhere to continue' : 'Press Space to continue';
     const el = h(`
       <div class="notebook results">
         <h2>Flight log <small>Day ${day}</small></h2>
@@ -335,20 +353,45 @@ export class Screens {
         <div class="total"><span>Total earned</span><b data-total>$0</b></div>
         <div class="results-says"><span class="mini-panda">🐼</span><div class="bubble left">${escape(says)}</div></div>
         <button class="btn primary big" data-a="next">Back to the hangar</button>
+        <p class="skip-hint">${hint}</p>
       </div>`);
     const total = el.querySelector<HTMLElement>('[data-total]')!;
     const start = performance.now();
-    const delay = 150 + earnings.lines.length * 120;
+    const delay = 50 + earnings.lines.length * 70;
+    const COUNT_MS = 450;
+    let done = false;
+    let paid = false;
+    const pay = () => {
+      if (!paid) {
+        paid = true;
+        onDone();
+      }
+    };
+    const finish = () => {
+      done = true;
+      total.textContent = money(earnings.total);
+      el.classList.add('instant');
+      pay();
+    };
     const anim = (now: number) => {
-      const t = Math.min(1, Math.max(0, (now - start - delay) / 700));
+      if (done || !el.isConnected) return;
+      const t = Math.min(1, Math.max(0, (now - start - delay) / COUNT_MS));
       total.textContent = money(earnings.total * t);
-      if (t < 1 && el.isConnected) requestAnimationFrame(anim);
+      if (t > 0) pay();
+      if (t < 1) requestAnimationFrame(anim);
+      else done = true;
     };
     requestAnimationFrame(anim);
     el.querySelector('[data-a="next"]')!.addEventListener('click', () => this.act.continueFromResults());
     this.mount(el, 'dim-bg');
     this.previews = [];
-    window.setTimeout(onDone, delay + 200);
+    this.skipResults = () => {
+      // Stamps keep animating a little after the count; treat the whole thing as one.
+      const playing = !done || performance.now() - start < 450 + earnings.newRecords.length * 120 + 350;
+      if (!playing || el.classList.contains('instant')) return false;
+      finish();
+      return true;
+    };
   }
 
   showVictory(day: number): void {

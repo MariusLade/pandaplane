@@ -21,9 +21,11 @@ compared to what you have equipped.
 - **Rockets**: thrust, how fast they burn fuel, and weight.
 - **Fuel tanks**: capacity and weight.
 
-- **Sensors**: instruments that reveal readings in flight — speed, climb
-  rate, altitude or height above ground, pitch, an attitude indicator, fuel,
-  a stall horn or a stall-margin (angle of attack) meter. Without a sensor the
+- **Sensors**: cockpit instruments on a panel at the bottom of the screen —
+  airspeed indicator, vertical speed indicator, altimeter, radar altimeter
+  with a TERRAIN light, pitch indicator, attitude indicator (artificial
+  horizon with a flight-path marker), angle-of-attack gauge, fuel gauge, a
+  STALL warning light, or the Wrist Computer's LCD. Without a sensor the
   reading is hidden. Equip several at once, but only one per slot (speed,
   altitude, pitch, stall, fuel); the Wrist Computer bundles three slots.
 
@@ -50,7 +52,9 @@ npm run dev        # http://localhost:5173
 ```
 
 Controls (PC): `↑`/`↓` or `W`/`S` (also `←`/`→`, `A`/`D`) tilt the nose,
-`Space` starts the slide and fires the rocket, `Esc`/`P` pauses.
+`Space` starts the slide and fires the rocket, `Esc`/`P` pauses. After a
+flight, `Space`/`Enter` (or a tap) skips the landing pause and the flight-log
+animations, then continues.
 On touch screens, on-screen ▲ ▼ and BOOST buttons appear automatically.
 
 Add `?autopilot` to the URL to let the computer fly (useful for testing).
@@ -75,8 +79,8 @@ Nothing is a bitmap or audio file — everything is generated at runtime:
   rocks, flowers, mushrooms, snowmen and stone lanterns.
 - **Ponds**: dips in the hills fill with water (or ice in the snow). Ice is
   slippery; land fast and shallow on water and you skip like a stone.
-- **Scenery**: parallax mountain ranges with snow caps and forested ridges,
-  clouds, and stars at high altitude.
+- **Scenery**: parallax mountain ranges with snow caps, clouds, and stars at
+  high altitude.
 - **Pickups**: coin trails, big coins, boost rings and balloons, generated per
   60 m chunk.
 - **Ramps**: laid along the mountain profile, ending in a kicker curve
