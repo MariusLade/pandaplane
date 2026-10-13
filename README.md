@@ -21,8 +21,17 @@ compared to what you have equipped.
 - **Rockets**: thrust, how fast they burn fuel, and weight.
 - **Fuel tanks**: capacity and weight.
 
+- **Sensors**: instruments that reveal readings in flight — speed, climb
+  rate, altitude or height above ground, pitch, an attitude indicator, fuel,
+  a stall horn or a stall-margin (angle of attack) meter. Without a sensor the
+  reading is hidden. Equip several at once, but only one per slot (speed,
+  altitude, pitch, stall, fuel); the Wrist Computer bundles three slots.
+
 Weight matters everywhere: a heavy build keeps its speed but sinks faster and
 accelerates slower.
+
+The panda holds whatever pitch you give it — there is no auto-leveling — so
+avoiding stalls is up to you (and your instruments).
 
 ## Play
 

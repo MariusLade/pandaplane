@@ -52,8 +52,6 @@ export interface GliderItem extends ItemBase {
   tuck: number;
   /** Stall angle of attack in degrees. */
   stallDeg: number;
-  /** How strongly the nose turns into the airflow (1/s). */
-  stability: number;
   /** Multiplier on how fast the player can pitch. */
   control: number;
   /** Visual size in metres. */
@@ -80,7 +78,32 @@ export interface FuelItem extends ItemBase {
   seconds: number;
 }
 
-export type Item = RampItem | SledItem | GliderItem | RocketItem | FuelItem;
+/** What a sensor can display. The HUD shows a readout only if a sensor provides it. */
+export type SensorFeature =
+  | 'speed'
+  | 'climb'
+  | 'altitude'
+  | 'agl'
+  | 'proximity'
+  | 'fuel'
+  | 'pitch'
+  | 'horizon'
+  | 'stallHorn'
+  | 'aoa';
+
+/** Instrument slots: two sensors that share a slot cannot be equipped together. */
+export type SensorSlot = 'speed' | 'altitude' | 'pitch' | 'stall' | 'fuel';
+
+export type SensorStyle = 'dial' | 'level' | 'horn' | 'watch' | 'pitot' | 'radar' | 'ball' | 'vane' | 'gauge';
+
+export interface SensorItem extends ItemBase {
+  slots: SensorSlot[];
+  features: SensorFeature[];
+  color: string;
+  style: SensorStyle;
+}
+
+export type Item = RampItem | SledItem | GliderItem | RocketItem | FuelItem | SensorItem;
 
 export const RAMPS: RampItem[] = [
   { id: 'bump', name: 'Snow Bump', cost: 0, weight: 0, height: 20, launchDeg: 20, blurb: 'A lump of snow with ambition.' },
@@ -121,7 +144,6 @@ interface GliderDesign {
   cruiseCl: number;
   stallDeg: number;
   control: number;
-  stability: number;
   tuck: number;
   span: number;
   color: string;
@@ -147,7 +169,6 @@ function glider(d: GliderDesign): GliderItem {
     induced,
     tuck: d.tuck,
     stallDeg: d.stallDeg,
-    stability: d.stability,
     control: d.control,
     span: d.span,
     color: d.color,
@@ -167,7 +188,6 @@ const NO_GLIDER: GliderItem = {
   induced: 0.07,
   tuck: 1,
   stallDeg: 14,
-  stability: 0.6,
   control: 1,
   span: 0,
   color: '#000',
@@ -177,14 +197,14 @@ const NO_GLIDER: GliderItem = {
 
 export const GLIDERS: GliderItem[] = [
   NO_GLIDER,
-  glider({ id: 'leaf', name: 'Leaf Kite', cost: 150, weight: 1, minSpeed: 15, glideRatio: 2.5, cruiseCl: 0.9, stallDeg: 14, control: 1.1, stability: 1.4, tuck: 0.85, span: 2.2, color: '#6dbb4b', style: 'leaf', blurb: 'A large leaf on a stick.' }),
-  glider({ id: 'parasol', name: 'Parasol', cost: 320, weight: 3, minSpeed: 10, glideRatio: 2.9, cruiseCl: 1.1, stallDeg: 22, control: 0.65, stability: 2.2, tuck: 0.9, span: 2.6, color: '#ff6fa8', style: 'parasol', blurb: 'Floats like a feather. Goes nowhere fast.' }),
-  glider({ id: 'paper', name: 'Paper Wings', cost: 450, weight: 2, minSpeed: 18, glideRatio: 3.5, cruiseCl: 0.8, stallDeg: 15, control: 1.2, stability: 1.7, tuck: 0.6, span: 2.8, color: '#f4efe1', style: 'paper', blurb: 'Folded with great care.' }),
-  glider({ id: 'stunt', name: 'Stunt Wings', cost: 850, weight: 4, minSpeed: 23, glideRatio: 3.8, cruiseCl: 0.55, stallDeg: 19, control: 1.9, stability: 1.5, tuck: 0.5, span: 2.6, color: '#e2493b', style: 'stunt', blurb: 'Twitchy and fast. Loop-de-loops guaranteed.' }),
-  glider({ id: 'hang', name: 'Hang Glider', cost: 1150, weight: 14, minSpeed: 18, glideRatio: 5, cruiseCl: 0.75, stallDeg: 16, control: 0.95, stability: 2.0, tuck: 0.4, span: 3.6, color: '#ff7a3d', style: 'hang', blurb: 'An actual flying machine! A bit heavy.' }),
-  glider({ id: 'bat', name: 'Bat Wings', cost: 1700, weight: 6, minSpeed: 20, glideRatio: 5.5, cruiseCl: 0.65, stallDeg: 17, control: 1.5, stability: 1.9, tuck: 0.35, span: 3.4, color: '#5b3f8c', style: 'bat', blurb: 'Spooky, nimble and surprisingly efficient.' }),
-  glider({ id: 'carbon', name: 'Carbon Glider', cost: 2900, weight: 8, minSpeed: 22, glideRatio: 7, cruiseCl: 0.6, stallDeg: 17, control: 1.2, stability: 2.3, tuck: 0.2, span: 4.2, color: '#3a3f4b', style: 'carbon', blurb: 'Light, stiff and expensive.' }),
-  glider({ id: 'albatross', name: 'Albatross Wings', cost: 6200, weight: 18, minSpeed: 21, glideRatio: 9.5, cruiseCl: 0.5, stallDeg: 18, control: 0.75, stability: 2.6, tuck: 0.12, span: 5.0, color: '#ffffff', style: 'albatross', blurb: 'Glides forever. Turns like a cruise ship.' }),
+  glider({ id: 'leaf', name: 'Leaf Kite', cost: 150, weight: 1, minSpeed: 15, glideRatio: 2.5, cruiseCl: 0.9, stallDeg: 14, control: 1.1, tuck: 0.85, span: 2.2, color: '#6dbb4b', style: 'leaf', blurb: 'A large leaf on a stick.' }),
+  glider({ id: 'parasol', name: 'Parasol', cost: 320, weight: 3, minSpeed: 10, glideRatio: 3.2, cruiseCl: 1.1, stallDeg: 22, control: 0.65, tuck: 0.9, span: 2.6, color: '#ff6fa8', style: 'parasol', blurb: 'Floats like a feather. Goes nowhere fast.' }),
+  glider({ id: 'paper', name: 'Paper Wings', cost: 450, weight: 2, minSpeed: 18, glideRatio: 3.5, cruiseCl: 0.8, stallDeg: 15, control: 1.2, tuck: 0.6, span: 2.8, color: '#f4efe1', style: 'paper', blurb: 'Folded with great care.' }),
+  glider({ id: 'stunt', name: 'Stunt Wings', cost: 850, weight: 4, minSpeed: 23, glideRatio: 3.8, cruiseCl: 0.55, stallDeg: 19, control: 1.9, tuck: 0.5, span: 2.6, color: '#e2493b', style: 'stunt', blurb: 'Twitchy and fast. Loop-de-loops guaranteed.' }),
+  glider({ id: 'hang', name: 'Hang Glider', cost: 1150, weight: 14, minSpeed: 18, glideRatio: 5, cruiseCl: 0.75, stallDeg: 16, control: 0.95, tuck: 0.4, span: 3.6, color: '#ff7a3d', style: 'hang', blurb: 'An actual flying machine! A bit heavy.' }),
+  glider({ id: 'bat', name: 'Bat Wings', cost: 1700, weight: 6, minSpeed: 20, glideRatio: 5.5, cruiseCl: 0.65, stallDeg: 17, control: 1.5, tuck: 0.35, span: 3.4, color: '#5b3f8c', style: 'bat', blurb: 'Spooky, nimble and surprisingly efficient.' }),
+  glider({ id: 'carbon', name: 'Carbon Glider', cost: 2900, weight: 8, minSpeed: 22, glideRatio: 7, cruiseCl: 0.6, stallDeg: 17, control: 1.2, tuck: 0.2, span: 4.2, color: '#3a3f4b', style: 'carbon', blurb: 'Light, stiff and expensive.' }),
+  glider({ id: 'albatross', name: 'Albatross Wings', cost: 6200, weight: 18, minSpeed: 21, glideRatio: 9.5, cruiseCl: 0.5, stallDeg: 18, control: 0.75, tuck: 0.12, span: 5.0, color: '#ffffff', style: 'albatross', blurb: 'Glides forever. Turns like a cruise ship.' }),
 ];
 
 export const ROCKETS: RocketItem[] = [
@@ -208,44 +228,99 @@ export const FUELS: FuelItem[] = [
   { id: 'reactor', name: 'Reactor', cost: 5400, weight: 8, seconds: 12, blurb: 'Bamboo-powered fusion.' },
 ];
 
+export const SENSORS: SensorItem[] = [
+  { id: 'speedo', name: 'Speedometer', cost: 60, weight: 0.3, slots: ['speed'], features: ['speed'], color: '#2f7de1', style: 'dial', blurb: 'Tells you how fast you are going. Usually: not enough.' },
+  { id: 'baro', name: 'Barometer', cost: 80, weight: 0.5, slots: ['altitude'], features: ['altitude'], color: '#5aa54a', style: 'dial', blurb: 'Altitude above the valley floor, from air pressure.' },
+  { id: 'fuelgauge', name: 'Fuel Gauge', cost: 90, weight: 0.2, slots: ['fuel'], features: ['fuel'], color: '#ff7a3d', style: 'gauge', blurb: 'No more guessing when the rocket will cough out.' },
+  { id: 'level', name: 'Bubble Level', cost: 120, weight: 0.2, slots: ['pitch'], features: ['pitch'], color: '#f2b705', style: 'level', blurb: "Shows your nose angle. It's a bubble. In a tube." },
+  { id: 'horn', name: 'Stall Horn', cost: 220, weight: 0.4, slots: ['stall'], features: ['stallHorn'], color: '#e2493b', style: 'horn', blurb: 'HONKS when your wings stop working.' },
+  { id: 'wrist', name: 'Wrist Computer', cost: 350, weight: 0.4, slots: ['speed', 'altitude', 'pitch'], features: ['speed', 'altitude', 'pitch'], color: '#3a3f4b', style: 'watch', blurb: 'Speed, altitude and pitch in one cheap gadget. Hogs three slots.' },
+  { id: 'pitot', name: 'Pitot Tube', cost: 480, weight: 1, slots: ['speed'], features: ['speed', 'climb'], color: '#9aa3ad', style: 'pitot', blurb: 'Airspeed plus climb rate, so you see when you are sinking.' },
+  { id: 'radar', name: 'Radar Altimeter', cost: 650, weight: 1.5, slots: ['altitude'], features: ['agl', 'proximity'], color: '#20c5b5', style: 'radar', blurb: 'Height above the ground below you, and a terrain warning.' },
+  { id: 'attitude', name: 'Attitude Indicator', cost: 850, weight: 1.2, slots: ['pitch'], features: ['pitch', 'horizon'], color: '#4a6fd1', style: 'ball', blurb: 'An artificial horizon showing your nose and where you are really heading.' },
+  { id: 'aoa', name: 'AoA Meter', cost: 1200, weight: 0.8, slots: ['stall'], features: ['aoa'], color: '#9b5de5', style: 'vane', blurb: 'Shows how close you are to stalling, before it happens.' },
+];
+
+export const SENSOR_FEATURE_LABEL: Record<SensorFeature, string> = {
+  speed: 'Speed',
+  climb: 'Climb rate',
+  altitude: 'Altitude',
+  agl: 'Height above ground',
+  proximity: 'Terrain warning',
+  fuel: 'Fuel level',
+  pitch: 'Pitch angle',
+  horizon: 'Flight path',
+  stallHorn: 'Stall alarm',
+  aoa: 'Stall margin',
+};
+
+export const SENSOR_SLOT_LABEL: Record<SensorSlot, string> = {
+  speed: 'Speed',
+  altitude: 'Altitude',
+  pitch: 'Pitch',
+  stall: 'Stall',
+  fuel: 'Fuel',
+};
+
+/** Sensors that can't be equipped alongside `item` (they share a slot). */
+export function sensorConflicts(item: SensorItem): SensorItem[] {
+  return SENSORS.filter((s) => s.id !== item.id && s.slots.some((slot) => item.slots.includes(slot)));
+}
+
+/** Equip a sensor, unequipping anything that shares a slot. Returns the new list and what was removed. */
+export function equipSensor(current: string[], id: string): { sensors: string[]; removed: SensorItem[] } {
+  const item = SENSORS.find((s) => s.id === id);
+  if (!item) return { sensors: current, removed: [] };
+  const clash = new Set(sensorConflicts(item).map((s) => s.id));
+  const removed = SENSORS.filter((s) => current.includes(s.id) && clash.has(s.id));
+  return { sensors: [...current.filter((c) => !clash.has(c) && c !== id), id], removed };
+}
+
 export interface CatalogMap {
   ramp: RampItem[];
   sled: SledItem[];
   glider: GliderItem[];
   rocket: RocketItem[];
   fuel: FuelItem[];
+  sensor: SensorItem[];
 }
 
-export const CATALOG: CatalogMap = { ramp: RAMPS, sled: SLEDS, glider: GLIDERS, rocket: ROCKETS, fuel: FUELS };
+export const CATALOG: CatalogMap = { ramp: RAMPS, sled: SLEDS, glider: GLIDERS, rocket: ROCKETS, fuel: FUELS, sensor: SENSORS };
 
-export const CATEGORY_LABEL: Record<Category, string> = {
+/** Every shop in the hangar: the single-choice gear categories plus sensors. */
+export type ShopCategory = Category | 'sensor';
+export const SHOP_CATEGORIES: ShopCategory[] = [...CATEGORIES, 'sensor'];
+
+export const CATEGORY_LABEL: Record<ShopCategory, string> = {
   ramp: 'Ramps',
   sled: 'Sleds',
   glider: 'Gliders',
   rocket: 'Rockets',
   fuel: 'Fuel tanks',
+  sensor: 'Sensors',
 };
 
-export const CATEGORY_ICON: Record<Category, string> = {
+export const CATEGORY_ICON: Record<ShopCategory, string> = {
   ramp: '⛷️',
   sled: '🛷',
   glider: '🪁',
   rocket: '🚀',
   fuel: '⛽',
+  sensor: '📟',
 };
 
 /** Which item is equipped in each category, by id. */
 export type Equipped = Record<Category, string>;
-/** Ids of owned items per category. */
-export type Owned = Record<Category, string[]>;
+/** Ids of owned items per shop. */
+export type Owned = Record<ShopCategory, string[]>;
 
 export const START_EQUIPPED: Equipped = { ramp: 'bump', sled: 'box', glider: 'none', rocket: 'none', fuel: 'thimble' };
 
 export function startOwned(): Owned {
-  return { ramp: ['bump'], sled: ['box'], glider: ['none'], rocket: ['none'], fuel: ['thimble'] };
+  return { ramp: ['bump'], sled: ['box'], glider: ['none'], rocket: ['none'], fuel: ['thimble'], sensor: [] };
 }
 
-export function findItem<C extends Category>(category: C, id: string): CatalogMap[C][number] | undefined {
+export function findItem<C extends ShopCategory>(category: C, id: string): CatalogMap[C][number] | undefined {
   return (CATALOG[category] as Item[]).find((i) => i.id === id) as CatalogMap[C][number] | undefined;
 }
 
@@ -255,20 +330,22 @@ export interface Loadout {
   glider: GliderItem;
   rocket: RocketItem;
   fuel: FuelItem;
+  sensors: SensorItem[];
 }
 
-export function loadoutFor(equipped: Equipped): Loadout {
+export function loadoutFor(equipped: Equipped, sensors: string[] = []): Loadout {
   return {
     ramp: findItem('ramp', equipped.ramp) ?? RAMPS[0],
     sled: findItem('sled', equipped.sled) ?? SLEDS[0],
     glider: findItem('glider', equipped.glider) ?? GLIDERS[0],
     rocket: findItem('rocket', equipped.rocket) ?? ROCKETS[0],
     fuel: findItem('fuel', equipped.fuel) ?? FUELS[0],
+    sensors: SENSORS.filter((s) => sensors.includes(s.id)),
   };
 }
 
 /** Pick items by their index in each (cost-sorted) list. Handy for tests and demos. */
-export function loadoutByIndex(idx: Record<Category, number>): Loadout {
+export function loadoutByIndex(idx: Record<Category, number>, sensors: string[] = []): Loadout {
   const at = <T>(list: T[], i: number) => list[Math.max(0, Math.min(list.length - 1, i))];
   return {
     ramp: at(RAMPS, idx.ramp),
@@ -276,13 +353,20 @@ export function loadoutByIndex(idx: Record<Category, number>): Loadout {
     glider: at(GLIDERS, idx.glider),
     rocket: at(ROCKETS, idx.rocket),
     fuel: at(FUELS, idx.fuel),
+    sensors: SENSORS.filter((s) => sensors.includes(s.id)),
   };
 }
 
 /** Panda plus everything it carries. The ramp is not carried. */
 export function totalMass(g: Loadout): number {
   const rocketParts = g.rocket.thrust > 0 ? g.rocket.weight + g.fuel.weight : 0;
-  return PANDA_MASS + g.sled.weight + g.glider.weight + rocketParts;
+  const instruments = g.sensors.reduce((m, s) => m + s.weight, 0);
+  return PANDA_MASS + g.sled.weight + g.glider.weight + rocketParts + instruments;
+}
+
+/** Union of everything the equipped sensors can show. */
+export function sensorFeatures(g: Loadout): Set<SensorFeature> {
+  return new Set(g.sensors.flatMap((s) => s.features));
 }
 
 /** Seconds of boost the loadout gets. */

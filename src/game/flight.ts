@@ -241,9 +241,10 @@ export class Flight {
       this.pitch += wrapAngle(target - this.pitch) * Math.min(1, dt * 10);
       this.pitch += input.pitch * PITCH_RATE * 0.25 * dt;
     } else {
-      const stability = glider.stability * clamp(v / 12, 0, 1) * rho;
+      // In the air the nose only moves when the player tilts it: holding the
+      // right angle of attack (and avoiding stalls) is the pilot's job.
       const rate = PITCH_RATE * glider.control * Math.sqrt(this.lightness);
-      this.pitch += (input.pitch * rate - stability * Math.sin(alpha)) * dt;
+      this.pitch += input.pitch * rate * dt;
     }
     this.pitch = wrapAngle(this.pitch);
 

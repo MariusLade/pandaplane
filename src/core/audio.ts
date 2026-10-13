@@ -129,6 +129,10 @@ export class Sound {
     this.tone(659, 0.08, 'square', 0.1, 0.07);
     this.tone(784, 0.16, 'square', 0.1, 0.14);
   }
+  honk(): void {
+    this.tone(440, 0.18, 'square', 0.09);
+    this.tone(330, 0.18, 'square', 0.07);
+  }
   denied(): void {
     this.tone(180, 0.18, 'sawtooth', 0.12, 0, 120);
   }

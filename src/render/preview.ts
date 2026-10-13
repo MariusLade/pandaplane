@@ -1,5 +1,14 @@
 import { buildRamp } from '../game/ramp';
-import { FUELS, RAMPS, type Category, type FuelItem, type Item, type Loadout, type RampItem } from '../game/upgrades';
+import {
+  FUELS,
+  RAMPS,
+  type FuelItem,
+  type Item,
+  type Loadout,
+  type RampItem,
+  type SensorItem,
+  type ShopCategory,
+} from '../game/upgrades';
 import { mountainHeight } from '../game/world';
 import { drawPanda } from './panda';
 
@@ -86,7 +95,7 @@ function drawFuelPreview(ctx: CanvasRenderingContext2D, w: number, h: number, it
 /** Draws a small illustration of one shop item, worn by the panda where that makes sense. */
 export function drawItemPreview(
   canvas: HTMLCanvasElement,
-  category: Category,
+  category: ShopCategory,
   item: Item,
   base: Loadout,
   time: number,
@@ -96,6 +105,7 @@ export function drawItemPreview(
   const { ctx, w, h } = s;
   if (category === 'ramp') return drawRampPreview(ctx, w, h, item as RampItem);
   if (category === 'fuel') return drawFuelPreview(ctx, w, h, item as FuelItem);
+  if (category === 'sensor') return drawSensorPreview(ctx, w, h, item as SensorItem, time);
 
   // Show the item on its own: other categories fall back to their basics.
   const gear: Loadout = {
@@ -115,4 +125,235 @@ export function drawItemPreview(
     mood: 'happy',
     wind: 0.6,
   });
+}
+
+const INK = '#2a2340';
+
+/** One sensor gadget, drawn from primitives, centred at (cx, cy) with radius r. */
+export function drawSensorGadget(ctx: CanvasRenderingContext2D, item: SensorItem, cx: number, cy: number, r: number, time: number): void {
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(1.5, r * 0.08);
+  ctx.strokeStyle = INK;
+  const wobble = Math.sin(time * 2 + cx) * 0.25;
+  const dial = (face: string, needle: number) => {
+    ctx.fillStyle = item.color;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = face;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.74, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, r * 0.05);
+    for (let i = 0; i <= 8; i++) {
+      const a = Math.PI * 0.75 + (i / 8) * Math.PI * 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r * 0.6, cy + Math.sin(a) * r * 0.6);
+      ctx.lineTo(cx + Math.cos(a) * r * 0.7, cy + Math.sin(a) * r * 0.7);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#e2493b';
+    ctx.lineWidth = Math.max(1.5, r * 0.08);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(needle) * r * 0.6, cy + Math.sin(needle) * r * 0.6);
+    ctx.stroke();
+    ctx.fillStyle = INK;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  switch (item.style) {
+    case 'dial':
+      dial('#fff8ec', -Math.PI / 4 + wobble);
+      break;
+    case 'gauge': {
+      // Half-moon fuel gauge with E/F marks.
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.arc(cx, cy + r * 0.35, r, Math.PI, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fff8ec';
+      ctx.beginPath();
+      ctx.arc(cx, cy + r * 0.35, r * 0.75, Math.PI, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = INK;
+      ctx.font = `700 ${Math.round(r * 0.32)}px Fredoka, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('E', cx - r * 0.5, cy + r * 0.25);
+      ctx.fillText('F', cx + r * 0.5, cy + r * 0.25);
+      const a = Math.PI + Math.PI * (0.65 + wobble * 0.3);
+      ctx.strokeStyle = '#e2493b';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + r * 0.35);
+      ctx.lineTo(cx + Math.cos(a) * r * 0.65, cy + r * 0.35 + Math.sin(a) * r * 0.65);
+      ctx.stroke();
+      break;
+    }
+    case 'level': {
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.roundRect(cx - r * 1.3, cy - r * 0.45, r * 2.6, r * 0.9, r * 0.2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#bff0a8';
+      ctx.beginPath();
+      ctx.roundRect(cx - r * 0.8, cy - r * 0.22, r * 1.6, r * 0.44, r * 0.22);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(cx + wobble * r * 0.8, cy, r * 0.22, r * 0.14, 0, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'horn': {
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.9, cy - r * 0.25);
+      ctx.lineTo(cx + r * 0.6, cy - r * 0.8);
+      ctx.lineTo(cx + r * 0.6, cy + r * 0.8);
+      ctx.lineTo(cx - r * 0.9, cy + r * 0.25);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = INK;
+      ctx.fillRect(cx - r * 1.1, cy - r * 0.3, r * 0.25, r * 0.6);
+      ctx.strokeStyle = '#e2493b';
+      const pulse = (time * 2) % 1;
+      for (let i = 0; i < 2; i++) {
+        ctx.globalAlpha = 1 - ((pulse + i * 0.5) % 1);
+        ctx.beginPath();
+        ctx.arc(cx + r * 0.6, cy, r * (0.4 + ((pulse + i * 0.5) % 1) * 0.6), -0.7, 0.7);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      break;
+    }
+    case 'watch': {
+      ctx.fillStyle = '#555a66';
+      ctx.fillRect(cx - r * 0.35, cy - r * 1.3, r * 0.7, r * 2.6);
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.roundRect(cx - r * 0.85, cy - r * 0.75, r * 1.7, r * 1.5, r * 0.3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#9fe3a0';
+      ctx.fillRect(cx - r * 0.62, cy - r * 0.52, r * 1.24, r * 1.04);
+      ctx.fillStyle = INK;
+      ctx.font = `700 ${Math.round(r * 0.3)}px ui-monospace, monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText('88', cx, cy - r * 0.15);
+      ctx.fillText(`+${Math.round(10 + wobble * 20)}°`, cx, cy + r * 0.3);
+      break;
+    }
+    case 'pitot': {
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.roundRect(cx - r * 1.3, cy - r * 0.18, r * 2.2, r * 0.36, r * 0.18);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillRect(cx + r * 0.2, cy, r * 0.25, r * 0.9);
+      ctx.strokeRect(cx + r * 0.2, cy + r * 0.18, r * 0.25, r * 0.72);
+      ctx.fillStyle = INK;
+      ctx.beginPath();
+      ctx.arc(cx - r * 1.3, cy, r * 0.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(42,35,64,0.4)';
+      for (let i = 0; i < 3; i++) {
+        const x = cx - r * 1.5 - ((time * 40 + i * 12) % 30);
+        ctx.beginPath();
+        ctx.moveTo(x, cy - r * 0.5 + i * r * 0.5);
+        ctx.lineTo(x - r * 0.4, cy - r * 0.5 + i * r * 0.5);
+        ctx.stroke();
+      }
+      break;
+    }
+    case 'radar': {
+      ctx.fillStyle = INK;
+      ctx.fillRect(cx - r * 0.08, cy, r * 0.16, r * 0.9);
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - r * 0.1, r * 0.95, r * 0.45, -0.3, 0, Math.PI);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = item.color;
+      const pulse = (time * 1.5) % 1;
+      ctx.globalAlpha = 1 - pulse;
+      ctx.beginPath();
+      ctx.arc(cx, cy + r * 0.2, r * (0.6 + pulse * 0.7), 0.4, Math.PI - 0.4);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      break;
+    }
+    case 'ball': {
+      // Attitude indicator: sky/ground ball that tilts.
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.translate(cx, cy);
+      ctx.rotate(wobble * 0.6);
+      ctx.fillStyle = '#7cc4ff';
+      ctx.fillRect(-r, -r, r * 2, r);
+      ctx.fillStyle = '#c58a52';
+      ctx.fillRect(-r, 0, r * 2, r);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = item.color;
+      ctx.lineWidth = r * 0.18;
+      ctx.stroke();
+      ctx.strokeStyle = '#ff7a3d';
+      ctx.lineWidth = Math.max(2, r * 0.12);
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.55, cy);
+      ctx.lineTo(cx - r * 0.15, cy);
+      ctx.lineTo(cx, cy + r * 0.15);
+      ctx.lineTo(cx + r * 0.15, cy);
+      ctx.lineTo(cx + r * 0.55, cy);
+      ctx.stroke();
+      break;
+    }
+    case 'vane': {
+      dial('#f3ecff', Math.PI * (1.6 + wobble * 0.4));
+      ctx.fillStyle = '#e2493b';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.62, -0.35, 0.35);
+      ctx.arc(cx, cy, r * 0.5, 0.35, -0.35, true);
+      ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+}
+
+/** Shop card illustration for a sensor. */
+function drawSensorPreview(ctx: CanvasRenderingContext2D, w: number, h: number, item: SensorItem, time: number) {
+  drawSensorGadget(ctx, item, w / 2, h / 2, Math.min(w, h) * 0.32, time);
+}
+
+/** The hangar tile: every equipped sensor side by side. */
+export function drawSensorRack(canvas: HTMLCanvasElement, sensors: SensorItem[], time: number): void {
+  const s = setup(canvas);
+  if (!s) return;
+  const { ctx, w, h } = s;
+  if (!sensors.length) {
+    ctx.fillStyle = 'rgba(42,35,64,0.45)';
+    ctx.font = '600 14px Fredoka, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No instruments. Flying blind!', w / 2, h / 2 + 5);
+    return;
+  }
+  const n = sensors.length;
+  const cell = w / n;
+  const r = Math.min(cell * 0.36, h * 0.32);
+  sensors.forEach((item, i) => drawSensorGadget(ctx, item, cell * (i + 0.5), h / 2, r, time));
 }

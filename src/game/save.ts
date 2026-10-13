@@ -1,6 +1,15 @@
 import { storage } from '../core/storage';
 import { EMPTY_RECORDS, type Records } from './economy';
-import { CATALOG, CATEGORIES, START_EQUIPPED, startOwned, type Equipped, type Owned } from './upgrades';
+import {
+  CATALOG,
+  CATEGORIES,
+  SHOP_CATEGORIES,
+  START_EQUIPPED,
+  equipSensor,
+  startOwned,
+  type Equipped,
+  type Owned,
+} from './upgrades';
 
 export interface SaveData {
   version: 2;
@@ -8,6 +17,8 @@ export interface SaveData {
   day: number;
   owned: Owned;
   equipped: Equipped;
+  /** Equipped sensor ids (several at once, no two sharing a slot). */
+  sensors: string[];
   best: Records;
   worldSeed: number;
   goalReached: boolean;
@@ -25,6 +36,7 @@ export function newSave(): SaveData {
     day: 1,
     owned: startOwned(),
     equipped: { ...START_EQUIPPED },
+    sensors: [],
     best: { ...EMPTY_RECORDS },
     worldSeed: (Math.random() * 2 ** 31) | 0,
     goalReached: false,
@@ -60,7 +72,7 @@ export function loadSave(): SaveData | null {
     const fresh = newSave();
     const loaded = data as unknown as Partial<SaveData>;
     const owned = startOwned();
-    for (const c of CATEGORIES) {
+    for (const c of SHOP_CATEGORIES) {
       const valid = new Set(CATALOG[c].map((i) => i.id));
       for (const id of loaded.owned?.[c] ?? []) if (valid.has(id) && !owned[c].includes(id)) owned[c].push(id);
     }
@@ -69,7 +81,9 @@ export function loadSave(): SaveData | null {
       const id = loaded.equipped?.[c];
       if (id && owned[c].includes(id)) equipped[c] = id;
     }
-    return { ...fresh, ...loaded, version: 2, owned, equipped, best: { ...fresh.best, ...loaded.best } };
+    let sensors: string[] = [];
+    for (const id of loaded.sensors ?? []) if (owned.sensor.includes(id)) sensors = equipSensor(sensors, id).sensors;
+    return { ...fresh, ...loaded, version: 2, owned, equipped, sensors, best: { ...fresh.best, ...loaded.best } };
   } catch {
     return null;
   }

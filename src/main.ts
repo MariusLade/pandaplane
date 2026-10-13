@@ -5,7 +5,7 @@ import { autopilot } from './game/autopilot';
 import { computeEarnings, updateRecords } from './game/economy';
 import { Flight, type FlightInput } from './game/flight';
 import { clearSave, loadSave, newSave, writeSave, type SaveData } from './game/save';
-import { findItem, loadoutByIndex, loadoutFor, type Category } from './game/upgrades';
+import { equipSensor, findItem, loadoutByIndex, loadoutFor, type Loadout, type ShopCategory } from './game/upgrades';
 import { biomeAt, World } from './game/world';
 import type { Mood } from './render/panda';
 import { Renderer, type CameraMode } from './render/renderer';
@@ -36,8 +36,8 @@ class Game {
   private biomeName = '';
   private pendingVictory = false;
   private lastChatter = -10;
+  private honkTimer = 0;
   private wasBoosting = false;
-  private wasStalled = false;
   /** `?autopilot` in the URL lets the computer fly (handy for testing and demos). */
   private autopilot = new URLSearchParams(location.search).has('autopilot');
 
@@ -77,6 +77,7 @@ class Game {
       closeShop: () => this.toHangar(quip('hangar')),
       buy: (c, id) => this.buy(c, id),
       equip: (c, id) => this.equip(c, id),
+      unequipSensor: (id) => this.unequipSensor(id),
       launch: () => this.launch(),
       toTitle: () => this.toTitle(),
       toggleMute: () => {
@@ -142,22 +143,26 @@ class Game {
   private toHangar(says?: string): void {
     this.mode = 'hangar';
     this.newWorld();
-    this.flight = new Flight(this.world, loadoutFor(this.save.equipped));
+    this.flight = new Flight(this.world, this.gear());
     this.renderer.particles.list.length = 0;
     this.renderer.updateCamera(this.flight, 'hangar', 0, true);
     this.showFlightUi(false);
     this.screens.showHangar(this.save, says ?? quip(this.save.day === 1 ? 'hangarFirst' : 'hangar'));
   }
 
-  private openShop(category: Category, says?: string): void {
+  private gear(): Loadout {
+    return loadoutFor(this.save.equipped, this.save.sensors);
+  }
+
+  private openShop(category: ShopCategory, says?: string): void {
     this.screens.showShop(this.save, category, says ?? `Let's see what's in the ${category} shop…`);
   }
 
   private refreshGear(): void {
-    this.flight = new Flight(this.world, loadoutFor(this.save.equipped));
+    this.flight = new Flight(this.world, this.gear());
   }
 
-  private buy(category: Category, id: string): void {
+  private buy(category: ShopCategory, id: string): void {
     const item = findItem(category, id);
     if (!item) return;
     if (this.save.owned[category].includes(id)) return this.equip(category, id);
@@ -168,34 +173,45 @@ class Game {
     }
     this.save.money -= item.cost;
     this.save.owned = { ...this.save.owned, [category]: [...this.save.owned[category], id] };
-    this.save.equipped = { ...this.save.equipped, [category]: id };
-    this.persist();
     this.sound.buy();
-    this.refreshGear();
-    this.openShop(category, buyQuip(category));
+    this.equip(category, id, buyQuip(category));
   }
 
-  private equip(category: Category, id: string): void {
+  private equip(category: ShopCategory, id: string, says?: string): void {
     if (!this.save.owned[category].includes(id)) return;
-    this.save.equipped = { ...this.save.equipped, [category]: id };
+    if (category === 'sensor') {
+      const { sensors, removed } = equipSensor(this.save.sensors, id);
+      this.save.sensors = sensors;
+      if (removed.length) says = `${says ? `${says} ` : ''}Swapped out the ${removed.map((r) => r.name).join(' and ')}.`;
+    } else {
+      this.save.equipped = { ...this.save.equipped, [category]: id };
+    }
     this.persist();
     this.refreshGear();
-    this.openShop(category, quip('equip'));
+    this.openShop(category, says ?? quip('equip'));
+  }
+
+  private unequipSensor(id: string): void {
+    this.save.sensors = this.save.sensors.filter((s) => s !== id);
+    this.persist();
+    this.refreshGear();
+    this.openShop('sensor', quip('unequip'));
   }
 
   private launch(): void {
     this.mode = 'flight';
     this.newWorld();
-    this.flight = new Flight(this.world, loadoutFor(this.save.equipped));
+    this.flight = new Flight(this.world, this.gear());
     this.screens.hide();
     this.wasBoosting = false;
-    this.wasStalled = false;
     this.lastChatter = -10;
     this.doneTimer = 0;
     this.lastImpact = 0;
     this.acc = 0;
     this.biomeName = biomeAt(0).a.name;
     this.showFlightUi(true);
+    this.hud.configure(this.flight);
+    this.honkTimer = 0;
     this.prompt.hidden = false;
     this.prompt.textContent = this.input.touchSeen || matchMedia('(pointer: coarse)').matches ? 'Tap to slide!' : 'Press Space to slide!';
   }
@@ -258,7 +274,7 @@ class Game {
     const f = this.flight;
     if (f.phase === 'done') return this.lastImpact > 18 ? 'dizzy' : 'happy';
     if (f.phase === 'ready') return this.mode === 'hangar' && Math.sin(this.time * 0.3) > 0.9 ? 'sleepy' : 'happy';
-    if (f.stalled || (f.vy < -18 && f.altitudeAboveGround < 25)) return 'scared';
+    if (f.vy < -18 && f.altitudeAboveGround < 25) return 'scared';
     if (f.boosting || f.speed > 45) return 'excited';
     return 'happy';
   }
@@ -301,6 +317,7 @@ class Game {
 
     if (this.mode === 'flight') {
       this.hud.update(f, this.save.best.distance);
+      this.stallHorn(dt);
       const b = biomeAt(f.x);
       const name = b.t > 0.5 ? b.b.name : b.a.name;
       if (name !== this.biomeName) {
@@ -325,16 +342,28 @@ class Game {
     this.sound.setFlight(f.speed, f.boosting, active && this.mode === 'flight');
   }
 
+  /** The Stall Horn sensor honks while the wings are stalled. */
+  private stallHorn(dt: number): void {
+    const f = this.flight;
+    const stalled = f.phase === 'air' && !f.onGround && f.stalled;
+    if (!stalled || !f.gear.sensors.some((s) => s.features.includes('stallHorn'))) {
+      this.honkTimer = 0;
+      return;
+    }
+    this.honkTimer -= dt;
+    if (this.honkTimer <= 0) {
+      this.sound.honk();
+      this.honkTimer = 0.4;
+    }
+  }
+
   /** The panda comments on what is happening, without spamming. */
   private chatter(): void {
     const f = this.flight;
     if (f.phase !== 'air') return;
     const free = this.time - this.lastChatter > CHATTER_COOLDOWN;
     if (f.boosting && !this.wasBoosting && free) this.say(quip('boost'));
-    const stalling = f.stalled && !f.onGround;
-    if (stalling && !this.wasStalled && free) this.say(quip('stall'));
     this.wasBoosting = f.boosting;
-    this.wasStalled = stalling;
   }
 
   private say(text: string, force = false): void {

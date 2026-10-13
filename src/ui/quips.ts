@@ -1,4 +1,4 @@
-import type { Category } from '../game/upgrades';
+import type { ShopCategory } from '../game/upgrades';
 
 /** The panda's running commentary. Picked at random, never the same line twice in a row. */
 const LINES = {
@@ -27,8 +27,10 @@ const LINES = {
     glider: ['Wings! I have WINGS!', 'Look at me. I am the captain now.', 'I feel lighter already. Emotionally.'],
     rocket: ['What could possibly go wrong?', 'Strapping a rocket to myself. Totally normal.', 'Fire goes out the back, right?'],
     fuel: ['Mmm, fuel. Not for drinking.', 'More boom juice!', 'This tank sloshes with potential.'],
-  } satisfies Record<Category, string[]>,
+    sensor: ['Ooh, a gadget!', 'Science! In my cockpit!', 'Now I know things. Flying things.'],
+  } satisfies Record<ShopCategory, string[]>,
   equip: ['Swapping gear. Very tactical.', 'New day, new build.', 'I have a plan. Sort of.'],
+  unequip: ['Who needs instruments anyway?', 'Flying by feel. Bold.', 'Less clutter, more fluff.'],
   results: {
     record: ['Did you SEE that?!', 'New record! Write it in the bamboo!', 'I am the fastest, highest, flyingest panda!'],
     meh: ['That was a warm-up.', 'The wind was against me. Definitely the wind.', 'I meant to land there.'],
@@ -36,7 +38,6 @@ const LINES = {
   },
   launch: ['Wheeee!', 'Here I gooo!', 'Bamboo-zaaa!', 'Cowabunga!'],
   boost: ['ROCKET TIME!', 'Zoooom!', 'Hold onto your fluff!'],
-  stall: ['Uh oh…', 'Wings? Hello?', 'Too steep!'],
   crash: ['Oof!', 'Ouch!', 'My fluff!', 'Bonk!'],
   coin: ['Shiny!', 'Ka-ching!', 'Mine!'],
   ring: ['Wooosh!', 'Speed ring!'],
@@ -58,5 +59,5 @@ function pick(list: readonly string[]): string {
 }
 
 export const quip = (key: QuipKey): string => pick(LINES[key]);
-export const buyQuip = (c: Category): string => pick(LINES.buy[c]);
+export const buyQuip = (c: ShopCategory): string => pick(LINES.buy[c]);
 export const resultQuip = (kind: keyof typeof LINES.results): string => pick(LINES.results[kind]);

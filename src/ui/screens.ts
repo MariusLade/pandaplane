@@ -4,25 +4,31 @@ import type { SaveData } from '../game/save';
 import { STATS, buildSummary, statMax } from '../game/stats';
 import {
   CATALOG,
-  CATEGORIES,
   CATEGORY_ICON,
   CATEGORY_LABEL,
+  SENSOR_FEATURE_LABEL,
+  SENSOR_SLOT_LABEL,
+  SHOP_CATEGORIES,
   loadoutFor,
+  sensorConflicts,
   type Category,
   type Item,
   type Loadout,
+  type SensorItem,
+  type ShopCategory,
 } from '../game/upgrades';
 import { drawPanda } from '../render/panda';
-import { drawItemPreview } from '../render/preview';
+import { drawItemPreview, drawSensorRack } from '../render/preview';
 import { $, h, metres, money } from './dom';
 
 export interface ScreenActions {
   play(): void;
   newGame(): void;
-  openShop(category: Category): void;
+  openShop(category: ShopCategory): void;
   closeShop(): void;
-  buy(category: Category, id: string): void;
-  equip(category: Category, id: string): void;
+  buy(category: ShopCategory, id: string): void;
+  equip(category: ShopCategory, id: string): void;
+  unequipSensor(id: string): void;
   launch(): void;
   toTitle(): void;
   toggleMute(): void;
@@ -149,11 +155,16 @@ export class Screens {
   }
 
   showHangar(save: SaveData, says: string): void {
-    const gear = loadoutFor(save.equipped);
+    const gear = loadoutFor(save.equipped, save.sensors);
     const sum = buildSummary(gear);
     const progress = Math.min(1, save.best.distance / GOAL_DISTANCE);
-    const tiles = CATEGORIES.map((c) => {
-      const item = gear[c] as Item;
+    const tiles = SHOP_CATEGORIES.map((c) => {
+      const label =
+        c === 'sensor'
+          ? gear.sensors.length
+            ? `${gear.sensors.length} equipped`
+            : 'None equipped'
+          : (gear[c] as Item).name;
       const owned = save.owned[c].length;
       const total = CATALOG[c].length;
       const affordable = (CATALOG[c] as Item[]).some((i) => !save.owned[c].includes(i.id) && i.cost <= save.money);
@@ -162,7 +173,7 @@ export class Screens {
           <span class="tile-head"><span class="icon">${CATEGORY_ICON[c]}</span>${CATEGORY_LABEL[c]}
             ${affordable ? '<span class="new-badge">NEW!</span>' : ''}</span>
           <canvas class="preview" data-cat="${c}"></canvas>
-          <span class="tile-item">${escape(item.name)}</span>
+          <span class="tile-item">${escape(label)}</span>
           <span class="tile-foot">${owned}/${total} owned <span class="go">Shop ›</span></span>
         </button>`;
     }).join('');
@@ -194,11 +205,15 @@ export class Screens {
       </div>`);
     const previews: Preview[] = [this.mascot(el.querySelector<HTMLCanvasElement>('.mascot-canvas')!, gear)];
     el.querySelectorAll<HTMLCanvasElement>('canvas[data-cat]').forEach((canvas) => {
-      const c = canvas.dataset.cat as Category;
-      previews.push({ canvas, draw: (t) => drawItemPreview(canvas, c, gear[c] as Item, gear, t) });
+      const c = canvas.dataset.cat as ShopCategory;
+      previews.push({
+        canvas,
+        draw: (t) =>
+          c === 'sensor' ? drawSensorRack(canvas, gear.sensors, t) : drawItemPreview(canvas, c, gear[c as Category] as Item, gear, t),
+      });
     });
     el.querySelectorAll<HTMLElement>('[data-shop]').forEach((b) =>
-      b.addEventListener('click', () => this.act.openShop(b.dataset.shop as Category)),
+      b.addEventListener('click', () => this.act.openShop(b.dataset.shop as ShopCategory)),
     );
     el.querySelector('[data-a="launch"]')!.addEventListener('click', () => this.act.launch());
     el.querySelector('[data-a="menu"]')!.addEventListener('click', () => this.act.toTitle());
@@ -206,20 +221,22 @@ export class Screens {
     this.previews = previews;
   }
 
-  showShop(save: SaveData, category: Category, says: string): void {
-    const gear = loadoutFor(save.equipped);
-    const equipped = gear[category] as Item;
+  showShop(save: SaveData, category: ShopCategory, says: string): void {
+    const gear = loadoutFor(save.equipped, save.sensors);
+    const isSensor = category === 'sensor';
+    // Sensors have no single "equipped" item to compare against.
+    const equipped = isSensor ? null : (gear[category] as Item);
     const stats = STATS[category];
     const maxes = stats.map((s) => statMax(category, s, gear));
     const items = CATALOG[category] as Item[];
     const cards = items
       .map((item) => {
         const owned = save.owned[category].includes(item.id);
-        const isEquipped = item.id === equipped.id;
+        const isEquipped = isSensor ? save.sensors.includes(item.id) : item.id === equipped!.id;
         const rows = stats
           .map((s, si) => {
             const v = s.value(item, gear);
-            const cur = s.value(equipped, gear);
+            const cur = equipped ? s.value(equipped, gear) : v;
             const pct = Math.max(2, Math.min(100, (v / maxes[si]) * 100));
             let delta = '';
             if (!isEquipped && Math.abs(v - cur) > 1e-6) {
@@ -236,10 +253,13 @@ export class Screens {
           .join('');
         const afford = save.money >= item.cost;
         const action = isEquipped
-          ? '<button class="btn equip on" disabled>Equipped ✓</button>'
+          ? isSensor
+            ? `<button class="btn equip on" data-unequip="${item.id}">Equipped ✓ <small>(remove)</small></button>`
+            : '<button class="btn equip on" disabled>Equipped ✓</button>'
           : owned
             ? `<button class="btn equip" data-equip="${item.id}">Equip</button>`
             : `<button class="btn buy ${afford ? '' : 'disabled'}" data-buy="${item.id}">Buy ${money(item.cost)}</button>`;
+        const sensorInfo = isSensor ? this.sensorInfo(item as SensorItem, save.sensors, isEquipped) : '';
         const tag = owned ? '<span class="sticker">Owned</span>' : `<span class="price-tag">${item.cost ? money(item.cost) : 'Free'}</span>`;
         return `
           <article class="paper item ${isEquipped ? 'is-equipped' : ''} ${owned ? 'is-owned' : ''}">
@@ -247,6 +267,7 @@ export class Screens {
             <canvas class="preview" data-item="${item.id}"></canvas>
             <h3>${escape(item.name)}</h3>
             <p class="blurb">${escape(item.blurb)}</p>
+            ${sensorInfo}
             <div class="stats">${rows}</div>
             ${action}
           </article>`;
@@ -256,6 +277,7 @@ export class Screens {
       <div class="shop">
         ${this.header(save, `<button class="btn icon back" data-a="back">‹ Hangar</button><h2 class="sign-title"><span class="icon">${CATEGORY_ICON[category]}</span> ${CATEGORY_LABEL[category]}</h2>`)}
         <div class="shop-says"><span class="mini-panda">🐼</span><div class="bubble left">${escape(says)}</div></div>
+        ${isSensor ? '<p class="shop-note">Equip as many instruments as you like, but only one per slot. Without one, that reading stays hidden in flight.</p>' : ''}
         <div class="items">${cards}</div>
       </div>`);
     const previews: Preview[] = [];
@@ -269,11 +291,26 @@ export class Screens {
     el.querySelectorAll<HTMLElement>('[data-equip]').forEach((b) =>
       b.addEventListener('click', () => this.act.equip(category, b.dataset.equip!)),
     );
+    el.querySelectorAll<HTMLElement>('[data-unequip]').forEach((b) =>
+      b.addEventListener('click', () => this.act.unequipSensor(b.dataset.unequip!)),
+    );
     el.querySelector('[data-a="back"]')!.addEventListener('click', () => this.act.closeShop());
     const scroll = this.root.querySelector('.items')?.scrollTop ?? 0;
     this.mount(el, 'menu-bg');
     el.querySelector('.items')!.scrollTop = scroll;
     this.previews = previews;
+  }
+
+  /** What a sensor shows, which slots it uses and what it would replace. */
+  private sensorInfo(item: SensorItem, equipped: string[], isEquipped: boolean): string {
+    const shows = item.features.map((f) => `<span class="feature">✔ ${SENSOR_FEATURE_LABEL[f]}</span>`).join('');
+    const slots = item.slots.map((sl) => `<span class="slot">${SENSOR_SLOT_LABEL[sl]}</span>`).join('');
+    const clashes = sensorConflicts(item).filter((c) => equipped.includes(c.id));
+    const note =
+      !isEquipped && clashes.length
+        ? `<p class="replaces">Replaces ${clashes.map((c) => escape(c.name)).join(' & ')}</p>`
+        : '';
+    return `<div class="features">${shows}</div><div class="slots">Slot${item.slots.length > 1 ? 's' : ''}: ${slots}</div>${note}`;
   }
 
   showResults(day: number, earnings: Earnings, says: string, onDone: () => void): void {

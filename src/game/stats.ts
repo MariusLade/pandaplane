@@ -4,7 +4,6 @@ import {
   CATALOG,
   burnTime,
   totalMass,
-  type Category,
   type FuelItem,
   type GliderItem,
   type Item,
@@ -12,6 +11,7 @@ import {
   type RampItem,
   type RocketItem,
   type SledItem,
+  type ShopCategory,
 } from './upgrades';
 import { World } from './world';
 
@@ -57,7 +57,7 @@ const weight: StatDef = {
   format: kg,
 };
 
-export const STATS: Record<Category, StatDef[]> = {
+export const STATS: Record<ShopCategory, StatDef[]> = {
   ramp: [
     {
       key: 'drop',
@@ -171,10 +171,11 @@ export const STATS: Record<Category, StatDef[]> = {
     },
     weight,
   ],
+  sensor: [weight],
 };
 
 /** Largest value of a stat across the category, for scaling bars. */
-export function statMax(category: Category, stat: StatDef, gear: Loadout): number {
+export function statMax(category: ShopCategory, stat: StatDef, gear: Loadout): number {
   let max = 0;
   for (const item of CATALOG[category] as Item[]) max = Math.max(max, stat.value(item, gear));
   return max || 1;
