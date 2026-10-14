@@ -79,7 +79,120 @@ export function drawTerrain(ctx: CanvasRenderingContext2D, cam: Camera, world: W
   ctx.stroke();
 
   drawPonds(ctx, cam, world, time);
+  if (Number.isFinite(world.sea)) drawSea(ctx, cam, world, time);
   drawGroundDetail(ctx, cam, world, time);
+}
+
+/** Visual swell on the sea surface (physics keeps it flat). */
+const swell = (x: number, t: number) => Math.sin(x * 0.18 + t * 2.2) * 0.22 + Math.sin(x * 0.045 - t * 0.9) * 0.45;
+
+/** Open sea: a wavy translucent surface over the drowned terrain, foam on the shores and bobbing buoys. */
+function drawSea(ctx: CanvasRenderingContext2D, cam: Camera, world: World, time: number) {
+  const sea = world.sea;
+  const top = cam.sy(sea + 0.7);
+  if (top > cam.h + 5) return;
+  const w = cam.w;
+  const step = 6;
+  const surf: number[] = [];
+  ctx.beginPath();
+  ctx.moveTo(-step, cam.h + 10);
+  for (let sx = -step; sx <= w + step; sx += step) {
+    const y = cam.sy(sea + swell(cam.wx(sx), time));
+    surf.push(y);
+    ctx.lineTo(sx, y);
+  }
+  ctx.lineTo(w + step, cam.h + 10);
+  ctx.closePath();
+  const deep = cam.sy(sea - 30);
+  const g = ctx.createLinearGradient(0, top, 0, Math.max(top + 1, deep));
+  g.addColorStop(0, 'rgba(64,160,190,0.9)');
+  g.addColorStop(0.4, 'rgba(30,96,140,0.94)');
+  g.addColorStop(1, 'rgba(14,44,82,0.97)');
+  ctx.fillStyle = g;
+  ctx.fill();
+  // Bright crest line along the top.
+  ctx.beginPath();
+  surf.forEach((y, i) => (i ? ctx.lineTo(i * step - step, y) : ctx.moveTo(-step, y)));
+  ctx.strokeStyle = 'rgba(220,245,255,0.85)';
+  ctx.lineWidth = Math.max(2, Math.min(6, 0.3 * cam.ppm));
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  const ppm = cam.ppm;
+  if (ppm < 1) return;
+  // Wave caps drifting along just under the surface.
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.lineWidth = Math.max(1, 0.08 * ppm);
+  const cell = 9;
+  const c0 = Math.floor(cam.wx(0) / cell);
+  const c1 = Math.floor(cam.wx(w) / cell);
+  for (let c = c0; c <= c1; c++) {
+    const x = (c + hash(world.seed, c, 811)) * cell + Math.sin(time * 0.7 + c) * 1.5;
+    if (world.rawGround(x) > sea - 0.5) continue;
+    const d = 0.6 + hash(world.seed, c, 812) * 3;
+    const y = cam.sy(sea - d);
+    const len = (0.8 + hash(world.seed, c, 813) * 1.6) * ppm;
+    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(time * 1.5 + c);
+    ctx.beginPath();
+    ctx.moveTo(cam.sx(x) - len, y);
+    ctx.quadraticCurveTo(cam.sx(x), y - 0.25 * ppm, cam.sx(x) + len, y);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // Foam where waves lap the shore.
+  const shoreStep = 1;
+  let prevWet = world.rawGround(cam.wx(0) - shoreStep) < sea;
+  for (let x = cam.wx(0); x <= cam.wx(w); x += shoreStep) {
+    const wet = world.rawGround(x) < sea;
+    if (wet !== prevWet) {
+      const sx = cam.sx(x);
+      const sy = cam.sy(sea);
+      const lap = 0.6 + 0.4 * Math.sin(time * 2.5 + x);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      for (let k = 0; k < 4; k++) {
+        ctx.beginPath();
+        ctx.arc(sx + (wet ? 1 : -1) * k * 0.45 * ppm * lap, sy - 0.05 * ppm, (0.35 - k * 0.06) * ppm * lap, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    prevWet = wet;
+  }
+  // Buoys bobbing far from shore.
+  const bcell = 70;
+  for (let c = Math.floor(cam.wx(0) / bcell); c <= Math.floor(cam.wx(w) / bcell); c++) {
+    if (hash(world.seed, c, 821) > 0.35) continue;
+    const x = (c + 0.2 + hash(world.seed, c, 822) * 0.6) * bcell;
+    if (world.rawGround(x) > sea - 2) continue;
+    const bob = swell(x, time);
+    const sx = cam.sx(x);
+    const sy = cam.sy(sea + bob);
+    const s = ppm;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(Math.sin(time * 1.7 + c) * 0.15);
+    ctx.fillStyle = '#e2493b';
+    ctx.beginPath();
+    ctx.moveTo(-0.5 * s, 0.2 * s);
+    ctx.lineTo(-0.3 * s, -1.4 * s);
+    ctx.lineTo(0.3 * s, -1.4 * s);
+    ctx.lineTo(0.5 * s, 0.2 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-0.4 * s, -0.8 * s, 0.8 * s, 0.3 * s);
+    const blink = Math.sin(time * 3 + c) > 0.6;
+    ctx.fillStyle = blink ? '#fff3b0' : '#a08a40';
+    ctx.beginPath();
+    ctx.arc(0, -1.6 * s, 0.22 * s, 0, Math.PI * 2);
+    ctx.fill();
+    if (blink) {
+      const halo = ctx.createRadialGradient(0, -1.6 * s, 0, 0, -1.6 * s, 1.4 * s);
+      halo.addColorStop(0, 'rgba(255,240,170,0.5)');
+      halo.addColorStop(1, 'rgba(255,240,170,0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(-1.4 * s, -3 * s, 2.8 * s, 2.8 * s);
+    }
+    ctx.restore();
+  }
 }
 
 /** Stones embedded in the soil, visible when zoomed in. */
@@ -289,7 +402,7 @@ function drawGroundDetail(ctx: CanvasRenderingContext2D, cam: Camera, world: Wor
   ctx.lineCap = 'butt';
 }
 
-type Prop = TreeKind | 'rock' | 'flowers' | 'mushroom' | 'snowman' | 'lantern' | 'drift' | 'crystal' | 'basalt';
+type Prop = TreeKind | 'rock' | 'flowers' | 'mushroom' | 'snowman' | 'lantern' | 'drift' | 'crystal' | 'basalt' | 'shell' | 'parasol';
 
 function pickProp(scenery: [string, number][], roll: number): Prop | null {
   let acc = 0;
@@ -374,6 +487,12 @@ export function drawDecor(
         break;
       case 'basalt':
         drawBasalt(ctx, sx, sy, ppm, size, c, seed);
+        break;
+      case 'shell':
+        drawShells(ctx, sx, sy, ppm, size, c, seed);
+        break;
+      case 'parasol':
+        drawParasol(ctx, sx, sy, ppm, c, time);
         break;
       case 'drift':
         ctx.fillStyle = '#ffffff';
@@ -529,7 +648,7 @@ function drawLantern(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm:
   ctx.fillRect(sx - 1.6 * s, sy - 3.1 * s, 3.2 * s, 3.2 * s);
 }
 
-export function drawSigns(ctx: CanvasRenderingContext2D, cam: Camera, world: World): void {
+export function drawSigns(ctx: CanvasRenderingContext2D, cam: Camera, world: World, time = 0): void {
   const ppm = cam.ppm;
   const x0 = cam.wx(-80);
   const x1 = cam.wx(cam.w + 80);
@@ -562,10 +681,73 @@ export function drawSigns(ctx: CanvasRenderingContext2D, cam: Camera, world: Wor
   const goal = world.map.goal;
   const gx = cam.sx(goal);
   if (gx > -40 * scale && gx < cam.w + 40 * scale)
-    drawGoalGate(ctx, gx, cam.sy(world.groundY(goal)), Math.max(ppm, 2), world.map.goalName.toUpperCase());
+    drawGoalGate(ctx, gx, cam.sy(world.groundY(goal)), Math.max(ppm, 2), world.map.goalName.toUpperCase(), time);
 }
 
-function drawGoalGate(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: number, label: string) {
+/** A striped lighthouse with a sweeping beam, next to the goal gate. */
+function drawLighthouse(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: number, time: number) {
+  const h = 26 * ppm;
+  const wb = 3.2 * ppm;
+  const wt = 2 * ppm;
+  // Beam first, so the tower sits on top of it.
+  const ly = sy - h - 1.6 * ppm;
+  const a = Math.sin(time * 0.9) * 0.9;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const dir of [-1, 1]) {
+    const ang = a + (dir < 0 ? Math.PI : 0);
+    const len = 40 * ppm;
+    const spread = 0.1;
+    const beam = ctx.createLinearGradient(sx, ly, sx + Math.cos(ang) * len, ly + Math.sin(ang) * len * 0.3);
+    beam.addColorStop(0, 'rgba(255,245,190,0.28)');
+    beam.addColorStop(1, 'rgba(255,245,190,0)');
+    ctx.fillStyle = beam;
+    ctx.beginPath();
+    ctx.moveTo(sx, ly);
+    ctx.lineTo(sx + Math.cos(ang - spread) * len, ly + Math.sin(ang - spread) * len * 0.3);
+    ctx.lineTo(sx + Math.cos(ang + spread) * len, ly + Math.sin(ang + spread) * len * 0.3);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+  // Striped tapering tower.
+  const bands = 5;
+  for (let i = 0; i < bands; i++) {
+    const y0 = sy - (h * i) / bands;
+    const y1 = sy - (h * (i + 1)) / bands;
+    const w0 = wb + (wt - wb) * (i / bands);
+    const w1 = wb + (wt - wb) * ((i + 1) / bands);
+    ctx.fillStyle = i % 2 ? '#ffffff' : '#d6372b';
+    ctx.beginPath();
+    ctx.moveTo(sx - w0, y0);
+    ctx.lineTo(sx - w1, y1);
+    ctx.lineTo(sx + w1, y1);
+    ctx.lineTo(sx + w0, y0);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Gallery, lamp room and roof.
+  ctx.fillStyle = '#2b2b2b';
+  ctx.fillRect(sx - wt - 0.6 * ppm, sy - h - 0.4 * ppm, (wt + 0.6 * ppm) * 2, 0.6 * ppm);
+  const glow = 0.75 + 0.25 * Math.sin(time * 6);
+  ctx.fillStyle = `rgba(255,240,170,${glow})`;
+  ctx.fillRect(sx - wt * 0.75, sy - h - 2.8 * ppm, wt * 1.5, 2.4 * ppm);
+  ctx.fillStyle = '#d6372b';
+  ctx.beginPath();
+  ctx.moveTo(sx - wt, sy - h - 2.8 * ppm);
+  ctx.lineTo(sx, sy - h - 4.6 * ppm);
+  ctx.lineTo(sx + wt, sy - h - 2.8 * ppm);
+  ctx.closePath();
+  ctx.fill();
+  const halo = ctx.createRadialGradient(sx, ly, 0, sx, ly, 6 * ppm);
+  halo.addColorStop(0, `rgba(255,240,170,${0.6 * glow})`);
+  halo.addColorStop(1, 'rgba(255,240,170,0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(sx - 6 * ppm, ly - 6 * ppm, 12 * ppm, 12 * ppm);
+}
+
+function drawGoalGate(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: number, label: string, time = 0) {
+  if (label.includes('LIGHTHOUSE')) drawLighthouse(ctx, sx + 14 * ppm, sy, ppm, time);
   const pagoda = label.includes('PAGODA');
   const hgt = 16 * ppm;
   const half = 7 * ppm;
@@ -665,10 +847,11 @@ export function drawRamp(ctx: CanvasRenderingContext2D, cam: Camera, ramp: Ramp,
   ctx.beginPath();
   pts.forEach((p, i) => (i ? ctx.lineTo(cam.sx(p.x), cam.sy(p.y)) : ctx.moveTo(cam.sx(p.x), cam.sy(p.y))));
   const icy = ramp.item.style === 'ice';
-  ctx.strokeStyle = icy ? '#4a7fa8' : '#5e3b1f';
+  const steel = ramp.item.style === 'cliff';
+  ctx.strokeStyle = icy ? '#4a7fa8' : steel ? '#2b2f36' : '#5e3b1f';
   ctx.lineWidth = plank + 3;
   ctx.stroke();
-  ctx.strokeStyle = icy ? '#9fd8f5' : '#a06a3c';
+  ctx.strokeStyle = icy ? '#9fd8f5' : steel ? '#d6372b' : '#a06a3c';
   ctx.lineWidth = plank;
   ctx.stroke();
   ctx.strokeStyle = icy ? '#f2fbff' : '#eef6ff';
@@ -746,4 +929,74 @@ function drawBasalt(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: 
     ctx.fillStyle = '#4c4650';
     ctx.fillRect(x, sy - h, w - 1, Math.max(1, 0.18 * ppm));
   }
+}
+
+/** A little cluster of seashells and a starfish on the sand. */
+function drawShells(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: number, size: number, c: number, seed: number) {
+  const n = 1 + Math.floor(hash(seed, c, 130) * 3);
+  for (let i = 0; i < n; i++) {
+    const x = sx + (hash(seed, c, 131 + i) - 0.5) * 2.5 * ppm;
+    const r = (0.22 + hash(seed, c, 135 + i) * 0.2) * size * ppm;
+    if (hash(seed, c, 140 + i) < 0.35) {
+      // Starfish.
+      ctx.fillStyle = '#ff8f5a';
+      ctx.beginPath();
+      for (let k = 0; k < 10; k++) {
+        const a = -Math.PI / 2 + (k * Math.PI) / 5;
+        const rr = k % 2 ? r * 0.45 : r * 1.1;
+        ctx.lineTo(x + Math.cos(a) * rr, sy - r * 0.6 + Math.sin(a) * rr * 0.6);
+      }
+      ctx.closePath();
+      ctx.fill();
+      continue;
+    }
+    // Scallop shell with ridges.
+    ctx.fillStyle = hash(seed, c, 145 + i) < 0.5 ? '#ffe4d6' : '#ffd0e0';
+    ctx.beginPath();
+    ctx.moveTo(x, sy);
+    ctx.arc(x, sy, r, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(160,90,90,0.5)';
+    ctx.lineWidth = Math.max(0.8, 0.04 * ppm);
+    ctx.beginPath();
+    for (let k = 1; k < 5; k++) {
+      const a = Math.PI + (k / 5) * Math.PI;
+      ctx.moveTo(x, sy);
+      ctx.lineTo(x + Math.cos(a) * r, sy + Math.sin(a) * r);
+    }
+    ctx.stroke();
+  }
+}
+
+/** A striped beach parasol, flapping in the wind. */
+function drawParasol(ctx: CanvasRenderingContext2D, sx: number, sy: number, ppm: number, c: number, time: number) {
+  const s = ppm;
+  const tilt = 0.25 + Math.sin(time * 2 + c) * 0.05;
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(tilt);
+  ctx.strokeStyle = '#e8e2d4';
+  ctx.lineWidth = Math.max(1.5, 0.12 * s);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, -3.2 * s);
+  ctx.stroke();
+  const colors = ['#e2493b', '#ffffff', '#20a4f3', '#ffffff', '#ffd23d', '#ffffff'];
+  const r = 2 * s;
+  for (let i = 0; i < 6; i++) {
+    const a0 = Math.PI + (i / 6) * Math.PI;
+    const a1 = Math.PI + ((i + 1) / 6) * Math.PI;
+    ctx.fillStyle = colors[i];
+    ctx.beginPath();
+    ctx.moveTo(0, -3.2 * s);
+    ctx.lineTo(Math.cos(a0) * r, -3.2 * s + Math.sin(a0) * r * 0.55 + 0.6 * s);
+    ctx.lineTo(Math.cos(a1) * r, -3.2 * s + Math.sin(a1) * r * 0.55 + 0.6 * s);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+  // Towel.
+  ctx.fillStyle = '#ff6fa8';
+  ctx.fillRect(sx + 0.8 * s, sy - 0.12 * s, 2 * s, 0.14 * s);
 }

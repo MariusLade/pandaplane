@@ -54,7 +54,7 @@ export function newSave(): SaveData {
     gadgets: [],
     map: 'valley',
     unlocked: ['valley'],
-    progress: { valley: freshProgress(), canyon: freshProgress() },
+    progress: { valley: freshProgress(), canyon: freshProgress(), storm: freshProgress() },
     worldSeed: (Math.random() * 2 ** 31) | 0,
     totalEarned: 0,
     muted: false,

@@ -102,6 +102,19 @@ export interface Thermal {
 
 const THERMAL_CELL = 170;
 
+/** A band of horizontal wind across part of the sky. */
+export interface Gust {
+  x0: number;
+  x1: number;
+  /** Altitude band, metres above sea/valley level. */
+  y0: number;
+  y1: number;
+  /** m/s, + = tailwind (blowing the way you fly). */
+  speed: number;
+}
+
+const GUST_CELL = 240;
+
 const POND_CELL = 280;
 const POND_MAX_HALF_WIDTH = 90;
 
@@ -109,7 +122,10 @@ export class World {
   private chunks = new Map<number, Pickup[]>();
   private ponds = new Map<number, Pond | null>();
   private thermals = new Map<number, Thermal | null>();
+  private gusts = new Map<number, Gust | null>();
   readonly seed: number;
+  /** Sea level, or -Infinity on dry maps. */
+  readonly sea: number;
 
   constructor(
     seed: number,
@@ -117,6 +133,7 @@ export class World {
     readonly map: MapDef = VALLEY,
   ) {
     this.seed = seed + map.seedSalt;
+    this.sea = map.terrain.sea ?? -Infinity;
   }
 
   biomeAt(x: number): BiomeSample {
@@ -138,7 +155,52 @@ export class World {
       const f = k - Math.floor(k);
       v = (Math.floor(k) + smoothstep(clamp((f - 0.62) / 0.38, 0, 1))) * t.terrace;
     }
-    return v + fbm1(s + 7, x / 34, 2) * t.detail;
+    return v + fbm1(s + 7, x / 34, 2) * t.detail + (t.base ?? 0);
+  }
+
+  /** Horizontal wind at a point, m/s (+ = blowing forwards). */
+  wind(x: number, y: number): number {
+    const c = Math.floor(x / GUST_CELL);
+    let w = 0;
+    for (let k = c - 1; k <= c + 1; k++) {
+      const g = this.gust(k);
+      if (!g || x < g.x0 || x > g.x1 || y < g.y0 || y > g.y1) continue;
+      // Soft edges all round.
+      const ex = Math.min(x - g.x0, g.x1 - x) / 25;
+      const ey = Math.min(y - g.y0, g.y1 - y) / 12;
+      w += g.speed * smoothstep(clamp(Math.min(ex, ey), 0, 1));
+    }
+    return w;
+  }
+
+  gustsIn(x0: number, x1: number): Gust[] {
+    const out: Gust[] = [];
+    for (let k = Math.floor(x0 / GUST_CELL) - 1; k <= Math.floor(x1 / GUST_CELL) + 1; k++) {
+      const g = this.gust(k);
+      if (g && g.x1 >= x0 && g.x0 <= x1) out.push(g);
+    }
+    return out;
+  }
+
+  private gust(cell: number): Gust | null {
+    let g = this.gusts.get(cell);
+    if (g !== undefined) return g;
+    g = null;
+    if (cell >= 1) {
+      const x0 = (cell + hash(this.seed, cell, 701) * 0.4) * GUST_CELL;
+      const odds = mainBiome(this.biomeAt(x0)).wind ?? 0;
+      if (hash(this.seed, cell, 702) < odds) {
+        const len = 90 + hash(this.seed, cell, 703) * 160;
+        const ground = Math.max(this.rawGround(x0), this.sea);
+        const y0 = ground + 8 + hash(this.seed, cell, 704) * 140;
+        // Mostly tailwinds, but some headwinds to dodge.
+        const tail = hash(this.seed, cell, 705) < 0.68;
+        const speed = (8 + hash(this.seed, cell, 706) * 12) * (tail ? 1 : -1);
+        g = { x0, x1: x0 + len, y0, y1: y0 + 25 + hash(this.seed, cell, 707) * 45, speed };
+      }
+    }
+    this.gusts.set(cell, g);
+    return g;
   }
 
   /** Vertical wind at a point (thermals), m/s. */
@@ -190,14 +252,17 @@ export class World {
   /** Walkable surface height: the terrain, or a pond's surface where one fills a dip. */
   groundY(x: number): number {
     const raw = this.rawGround(x);
+    if (raw < this.sea) return this.sea;
     const pond = this.pondAt(x);
     return pond && raw < pond.level ? pond.level : raw;
   }
 
   /** What the panda would land on at x. */
   surfaceAt(x: number): Surface {
+    const raw = this.rawGround(x);
+    if (raw < this.sea) return 'water';
     const pond = this.pondAt(x);
-    return pond && this.rawGround(x) < pond.level ? pond.kind : 'ground';
+    return pond && raw < pond.level ? pond.kind : 'ground';
   }
 
   pondAt(x: number): Pond | null {
@@ -242,6 +307,8 @@ export class World {
       }
     }
     const level = minY + 1.5 + hash(this.seed, cell, 502) * 2.5;
+    // Dips below sea level are just the sea.
+    if (level <= this.sea + 0.5) return null;
     let x0 = minX;
     while (this.rawGround(x0) < level) {
       x0 -= 0.5;
@@ -266,7 +333,7 @@ export class World {
     }
     // A gentle downhill run-out first, so short hops still slide a fair way,
     // then the procedural hills fade in.
-    const runout = -14 * smoothstep(clamp(x / 200, 0, 1));
+    const runout = -(this.map.terrain.runout ?? 14) * smoothstep(clamp(x / 200, 0, 1));
     const hills = smoothstep(clamp((x - 40) / 260, 0, 1));
     return runout + this.valley(x) * hills;
   }

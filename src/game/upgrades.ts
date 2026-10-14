@@ -39,7 +39,7 @@ export interface RampItem extends ItemBase {
   kick?: number;
   /** Multiplier on deck friction (icy decks are slippery). */
   ice?: number;
-  style?: 'wood' | 'catapult' | 'ice' | 'spring';
+  style?: 'wood' | 'catapult' | 'ice' | 'spring' | 'cliff';
 }
 
 export type SledStyle =
@@ -54,7 +54,8 @@ export type SledStyle =
   | 'surfboard'
   | 'bobsled'
   | 'hover'
-  | 'obsidian';
+  | 'obsidian'
+  | 'jetski';
 
 export interface SledItem extends ItemBase {
   /** Friction coefficient on the ramp; also softens landings. */
@@ -65,6 +66,8 @@ export interface SledItem extends ItemBase {
   groundGlide?: number;
   /** Bounciness on landing (replaces the normal, rather dead, restitution). */
   bounce?: number;
+  /** Skims and skips on water instead of bogging down. */
+  waterSkim?: boolean;
   color: string;
   style: SledStyle;
 }
@@ -83,7 +86,8 @@ export type GliderStyle =
   | 'feathers'
   | 'albatross'
   | 'dragon'
-  | 'phoenix';
+  | 'phoenix'
+  | 'kite';
 
 export interface GliderItem extends ItemBase {
   /** Lift coefficient scale (multiplies CL * v^2). 0 = no wings. */
@@ -108,6 +112,8 @@ export interface GliderItem extends ItemBase {
   noStall?: boolean;
   /** Multiplier on how strongly thermals lift it. */
   thermal?: number;
+  /** Multiplier on how hard gusts of wind push it. */
+  wind?: number;
   color: string;
   style: GliderStyle;
   /** Design numbers, kept for the shop's stat bars. */
@@ -126,7 +132,8 @@ export type RocketStyle =
   | 'turbo'
   | 'afterburner'
   | 'space'
-  | 'magma';
+  | 'magma'
+  | 'thunder';
 
 export interface RocketItem extends ItemBase {
   /** Thrust as acceleration for a reference-weight panda, m/s^2. 0 = no rocket. */
@@ -137,11 +144,13 @@ export interface RocketItem extends ItemBase {
   regen?: number;
   /** Seconds of continuous burn to spool up: thrust ramps from 60% to 200%. */
   spool?: number;
+  /** A lightning strike fills the tank. */
+  lightningCharge?: boolean;
   color: string;
   style: RocketStyle;
 }
 
-export type FuelStyle = 'tank' | 'solar' | 'nitro' | 'lava';
+export type FuelStyle = 'tank' | 'solar' | 'nitro' | 'lava' | 'battery';
 
 export interface FuelItem extends ItemBase {
   /** Seconds of burn at a burn rate of 1. */
@@ -164,12 +173,13 @@ export type SensorFeature =
   | 'pitch'
   | 'horizon'
   | 'stallHorn'
-  | 'aoa';
+  | 'aoa'
+  | 'wind';
 
 /** Instrument slots: two sensors that share a slot cannot be equipped together. */
-export type SensorSlot = 'speed' | 'altitude' | 'pitch' | 'stall' | 'fuel';
+export type SensorSlot = 'speed' | 'altitude' | 'pitch' | 'stall' | 'fuel' | 'wind';
 
-export type SensorStyle = 'dial' | 'level' | 'horn' | 'watch' | 'pitot' | 'radar' | 'ball' | 'vane' | 'gauge';
+export type SensorStyle = 'dial' | 'level' | 'horn' | 'watch' | 'pitot' | 'radar' | 'ball' | 'vane' | 'gauge' | 'sock';
 
 export interface SensorItem extends ItemBase {
   slots: SensorSlot[];
@@ -178,7 +188,7 @@ export interface SensorItem extends ItemBase {
   style: SensorStyle;
 }
 
-export type WeaponStyle = 'none' | 'peas' | 'sling' | 'crackers' | 'bees' | 'snow' | 'laser';
+export type WeaponStyle = 'none' | 'peas' | 'sling' | 'crackers' | 'bees' | 'snow' | 'laser' | 'zap';
 
 export interface WeaponItem extends ItemBase {
   /** Damage per hit (crows have 1 HP, bats 2, bandits 4). */
@@ -200,11 +210,13 @@ export interface WeaponItem extends ItemBase {
   hitscan?: number;
   /** Enemies a shot can pass through. */
   pierce?: number;
+  /** A beam hit arcs on to this many more nearby enemies. */
+  chain?: number;
   color: string;
   style: WeaponStyle;
 }
 
-export type GadgetStyle = 'magnet' | 'charm' | 'belt' | 'radar' | 'shield' | 'helmet' | 'suit';
+export type GadgetStyle = 'magnet' | 'charm' | 'belt' | 'radar' | 'shield' | 'helmet' | 'suit' | 'floaties' | 'sail' | 'rod';
 
 export interface GadgetItem extends ItemBase {
   /** Pulls coins in from this far away (m). */
@@ -221,6 +233,12 @@ export interface GadgetItem extends ItemBase {
   heatSuit?: boolean;
   /** Arrows on screen point at incoming enemies. */
   threatRadar?: boolean;
+  /** Bounce off water instead of splashing down. */
+  floaties?: boolean;
+  /** Multiplier on how hard gusts push you. */
+  windMul?: number;
+  /** Lightning boosts you instead of hurting. */
+  lightningRod?: boolean;
   color: string;
   style: GadgetStyle;
 }
@@ -240,6 +258,7 @@ export const RAMPS: RampItem[] = [
   { id: 'springboard', name: 'Spring Board', cost: 3600, weight: 0, height: 62, launchDeg: 30, kick: 9, style: 'spring', perk: 'Spring: +32 km/h at the lip', blurb: 'A mega ramp with a trampoline at the end.' },
   { id: 'mountain', name: 'Mountain Ramp', cost: 5200, weight: 0, height: 96, launchDeg: 25, blurb: 'Starts near the summit. Bring a scarf.' },
   { id: 'volcano', name: 'Volcano Ramp', cost: 9000, weight: 0, height: 125, launchDeg: 24, unlock: 'canyon', perk: 'Starts right at the crater rim', blurb: 'Built from cooled lava. Mostly cooled.' },
+  { id: 'cliff', name: 'Sea Cliff Ramp', cost: 16000, weight: 0, height: 140, launchDeg: 18, kick: 4, style: 'cliff', unlock: 'storm', perk: 'Tallest drop · small spring', blurb: 'Bolted to the very top of the mountain. Do not look down.' },
 ];
 
 export const SLEDS: SledItem[] = [
@@ -255,6 +274,7 @@ export const SLEDS: SledItem[] = [
   { id: 'bobsled', name: 'Bobsled', cost: 2000, weight: 22, friction: 0.035, drag: 0.62, color: '#f2b705', style: 'bobsled', blurb: 'Aerodynamic panda pod.' },
   { id: 'hover', name: 'Hover Sled', cost: 4600, weight: 8, friction: 0.012, drag: 0.55, color: '#20c5b5', style: 'hover', blurb: 'Nobody knows how it works.' },
   { id: 'obsidian', name: 'Obsidian Board', cost: 8000, weight: 10, friction: 0.008, drag: 0.5, groundGlide: 0.4, color: '#2a2233', style: 'obsidian', unlock: 'canyon', perk: 'Glassy: skims after landing', blurb: 'Polished volcanic glass. Unbelievably slick.' },
+  { id: 'jetski', name: 'Jet Ski', cost: 12000, weight: 28, friction: 0.02, drag: 0.55, groundGlide: 0.6, waterSkim: true, color: '#ff4f8b', style: 'jetski', unlock: 'storm', perk: 'Skips and skims across water', blurb: 'Technically a boat. The panda insists it is a sled.' },
 ];
 
 /** Reference body-drag multiplier used when deriving glider coefficients. */
@@ -282,6 +302,7 @@ interface GliderDesign {
   rotor?: number;
   noStall?: boolean;
   thermal?: number;
+  wind?: number;
   unlock?: MapId;
   perk?: string;
 }
@@ -312,6 +333,7 @@ function glider(d: GliderDesign): GliderItem {
     design: { minSpeed: d.minSpeed, glideRatio: d.glideRatio },
     flaps: d.flaps,
     thermal: d.thermal,
+    wind: d.wind,
     unlock: d.unlock,
     rotor: d.rotor,
     noStall: d.noStall,
@@ -352,6 +374,7 @@ export const GLIDERS: GliderItem[] = [
   glider({ id: 'albatross', name: 'Albatross Wings', cost: 6200, weight: 18, minSpeed: 21, glideRatio: 9.5, cruiseCl: 0.5, stallDeg: 18, control: 0.75, tuck: 0.12, span: 5.0, color: '#ffffff', style: 'albatross', blurb: 'Glides forever. Turns like a cruise ship.' }),
   glider({ id: 'dragon', name: 'Dragon Wings', cost: 9500, weight: 22, minSpeed: 20, glideRatio: 10.5, cruiseCl: 0.5, stallDeg: 19, control: 0.95, tuck: 0.12, span: 5.2, flaps: 3, color: '#2e9e6b', style: 'dragon', perk: '3 mighty flaps', blurb: 'Ancient, enormous and a little bit smug.' }),
   glider({ id: 'phoenix', name: 'Phoenix Wings', cost: 14000, weight: 16, minSpeed: 19, glideRatio: 12, cruiseCl: 0.5, stallDeg: 19, control: 1.15, tuck: 0.1, span: 5.4, flaps: 2, thermal: 2, unlock: 'canyon', color: '#ff7a3d', style: 'phoenix', perk: 'Double thermal lift · 2 flaps', blurb: 'Reborn from the volcano. Loves hot air.' }),
+  glider({ id: 'stormkite', name: 'Storm Kite', cost: 19000, weight: 12, minSpeed: 18, glideRatio: 13, cruiseCl: 0.5, stallDeg: 19, control: 1.25, tuck: 0.1, span: 5.6, wind: 1.7, unlock: 'storm', color: '#20a4f3', style: 'kite', perk: 'Rides gusts 70% harder', blurb: 'A giant stunt kite. Tailwinds turn it into a rocket.' }),
 ];
 
 export const ROCKETS: RocketItem[] = [
@@ -367,6 +390,7 @@ export const ROCKETS: RocketItem[] = [
   { id: 'afterburner', name: 'Afterburner', cost: 5600, weight: 14, thrust: 15, burn: 1, spool: 3, color: '#6b7280', style: 'afterburner', perk: 'Spools up to 2× thrust', blurb: 'Starts sluggish, ends furious. Keep it lit!' },
   { id: 'space', name: 'Space Rocket', cost: 8200, weight: 24, thrust: 24, burn: 0.9, color: '#f2b705', style: 'space', blurb: 'Rated for orbit, almost.' },
   { id: 'magma', name: 'Magma Thruster', cost: 13000, weight: 26, thrust: 30, burn: 0.85, color: '#ff5a2a', style: 'magma', unlock: 'canyon', perk: 'The strongest push there is', blurb: 'Bottled volcano. Handle with oven mitts.' },
+  { id: 'thunder', name: 'Thunderbolt', cost: 21000, weight: 20, thrust: 24, burn: 0.8, lightningCharge: true, color: '#ffd23d', style: 'thunder', unlock: 'storm', perk: 'Lightning tops it up by a third', blurb: 'Runs on bottled storm. Get struck, get going.' },
 ];
 
 export const FUELS: FuelItem[] = [
@@ -380,6 +404,7 @@ export const FUELS: FuelItem[] = [
   { id: 'nitro', name: 'Nitro Canister', cost: 2900, weight: 4, seconds: 3, thrustMul: 1.6, style: 'nitro', perk: '+60% rocket thrust', blurb: 'Small, angry and extremely fast.' },
   { id: 'reactor', name: 'Reactor', cost: 5400, weight: 8, seconds: 12, blurb: 'Bamboo-powered fusion.' },
   { id: 'lavacell', name: 'Lava Cell', cost: 9500, weight: 6, seconds: 14, regen: 0.2, style: 'lava', unlock: 'canyon', perk: 'Huge, and recharges twice', blurb: 'A glowing core of molten bamboo.' },
+  { id: 'stormcell', name: 'Storm Battery', cost: 15000, weight: 7, seconds: 15, regen: 0.2, style: 'battery', unlock: 'storm', perk: 'Biggest tank, and recharges twice', blurb: 'Crackles when you shake it. Please do not shake it.' },
 ];
 
 export const SENSORS: SensorItem[] = [
@@ -393,6 +418,7 @@ export const SENSORS: SensorItem[] = [
   { id: 'radar', name: 'Radar Altimeter', cost: 650, weight: 1.5, slots: ['altitude'], features: ['agl', 'proximity'], color: '#20c5b5', style: 'radar', blurb: 'Height above the ground below you, and a terrain warning.' },
   { id: 'attitude', name: 'Attitude Indicator', cost: 850, weight: 1.2, slots: ['pitch'], features: ['pitch', 'horizon'], color: '#4a6fd1', style: 'ball', blurb: 'An artificial horizon showing your nose and where you are really heading.' },
   { id: 'aoa', name: 'AoA Meter', cost: 1200, weight: 0.8, slots: ['stall'], features: ['aoa'], color: '#9b5de5', style: 'vane', blurb: 'Shows how close you are to stalling, before it happens.' },
+  { id: 'windsock', name: 'Wind Sock', cost: 900, weight: 0.4, slots: ['wind'], features: ['wind'], color: '#20a4f3', style: 'sock', unlock: 'storm', blurb: 'A stripy sock on a stick. Shows tailwinds and headwinds.' },
 ];
 
 export const SENSOR_FEATURE_LABEL: Record<SensorFeature, string> = {
@@ -406,6 +432,7 @@ export const SENSOR_FEATURE_LABEL: Record<SensorFeature, string> = {
   horizon: 'Flight path',
   stallHorn: 'Stall alarm',
   aoa: 'Stall margin',
+  wind: 'Wind',
 };
 
 export const SENSOR_SLOT_LABEL: Record<SensorSlot, string> = {
@@ -414,6 +441,7 @@ export const SENSOR_SLOT_LABEL: Record<SensorSlot, string> = {
   pitch: 'Pitch',
   stall: 'Stall',
   fuel: 'Fuel',
+  wind: 'Wind',
 };
 
 /** Sensors that can't be equipped alongside `item` (they share a slot). */
@@ -438,6 +466,7 @@ export const WEAPONS: WeaponItem[] = [
   { id: 'bees', name: 'Bee Hive', cost: 2600, weight: 3, damage: 1, rate: 3, ammo: 36, speed: 34, spread: 0.25, homing: true, color: '#ffd23d', style: 'bees', unlock: 'canyon', perk: 'Homing: bees find their target', blurb: 'Friendly bees with a strong sense of justice.' },
   { id: 'snow', name: 'Snowball Gatling', cost: 4000, weight: 8, damage: 1, rate: 10, ammo: 150, speed: 85, spread: 0.1, color: '#e8f4ff', style: 'snow', unlock: 'canyon', perk: '10 shots a second', blurb: 'Brrrrrrrrt. Brought from the Snowy Peaks.' },
   { id: 'laser', name: 'Laser Monocle', cost: 7500, weight: 0.5, damage: 4, rate: 2.5, ammo: 30, speed: 0, spread: 0, hitscan: 160, color: '#ff3b6b', style: 'laser', unlock: 'canyon', perk: 'Instant beam, 160 m range', blurb: 'Very fancy. Very pew.' },
+  { id: 'zapper', name: 'Thunder Staff', cost: 11000, weight: 2, damage: 3, rate: 2, ammo: 30, speed: 0, spread: 0, hitscan: 120, chain: 3, color: '#ffd23d', style: 'zap', unlock: 'storm', perk: 'Chain lightning: arcs to 3 more', blurb: 'Borrowed from a wizard. Will be returned. Eventually.' },
 ];
 
 export const GADGETS: GadgetItem[] = [
@@ -448,6 +477,9 @@ export const GADGETS: GadgetItem[] = [
   { id: 'shield', name: 'Bubble Shield', cost: 1700, weight: 2, shield: 2, color: '#7fd8ff', style: 'shield', unlock: 'canyon', perk: 'Blocks 2 hits per flight', blurb: 'A very strong soap bubble.' },
   { id: 'helmet', name: 'Spiky Helmet', cost: 2300, weight: 3, spikes: true, color: '#9aa3ad', style: 'helmet', unlock: 'canyon', perk: 'Ram enemies without slowing', blurb: 'Pointy end forward.' },
   { id: 'suit', name: 'Heat Suit', cost: 3200, weight: 4, heatSuit: true, color: '#c0c6cf', style: 'suit', unlock: 'canyon', perk: 'Lava launches you · stronger thermals', blurb: 'Shiny, crinkly and fireproof.' },
+  { id: 'floaties', name: 'Water Wings', cost: 1500, weight: 1, floaties: true, color: '#ff9f1c', style: 'floaties', unlock: 'storm', perk: 'Bounce off the sea', blurb: 'Inflatable armbands. Safety first, then speed.' },
+  { id: 'sail', name: 'Pocket Sail', cost: 2400, weight: 2.5, windMul: 1.35, color: '#f4efe1', style: 'sail', unlock: 'storm', perk: 'Catch 35% more wind', blurb: 'A little sail on a backpack. Tailwinds love it.' },
+  { id: 'rod', name: 'Lightning Rod', cost: 3600, weight: 3, lightningRod: true, color: '#c9ced6', style: 'rod', unlock: 'storm', perk: 'Lightning launches you forward', blurb: 'Point it at the sky and think happy thoughts.' },
 ];
 
 export interface CatalogMap {
@@ -595,8 +627,8 @@ export function burnTime(g: Loadout): number {
 /** Combined numeric gadget effects: the biggest magnet, total shield, product of multipliers. */
 export const gadgetMax = (g: Loadout, key: 'magnet'): number => g.gadgets.reduce((m, x) => Math.max(m, x[key] ?? 0), 0);
 export const gadgetSum = (g: Loadout, key: 'shield'): number => g.gadgets.reduce((m, x) => m + (x[key] ?? 0), 0);
-export const gadgetMul = (g: Loadout, key: 'coinMul' | 'ammoMul'): number => g.gadgets.reduce((m, x) => m * (x[key] ?? 1), 1);
-export const hasGadget = (g: Loadout, key: 'spikes' | 'heatSuit' | 'threatRadar'): boolean => g.gadgets.some((x) => x[key]);
+export const gadgetMul = (g: Loadout, key: 'coinMul' | 'ammoMul' | 'windMul'): number => g.gadgets.reduce((m, x) => m * (x[key] ?? 1), 1);
+export const hasGadget = (g: Loadout, key: 'spikes' | 'heatSuit' | 'threatRadar' | 'floaties' | 'lightningRod'): boolean => g.gadgets.some((x) => x[key]);
 
 /** Is an item for sale yet? */
 export function itemUnlocked(item: Item, unlocked: readonly MapId[]): boolean {

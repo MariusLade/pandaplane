@@ -155,6 +155,10 @@ export class Sound {
       case 'sling':
         this.tone(500, 0.1, 'triangle', 0.1, 0, 200);
         break;
+      case 'zap':
+        this.burst(0.15, 4000, 0.18, 'highpass');
+        this.tone(1800, 0.1, 'sawtooth', 0.05, 0, 600);
+        break;
       default:
         this.tone(900, 0.05, 'square', 0.05, 0, 500);
     }
@@ -178,6 +182,19 @@ export class Sound {
   sizzle(): void {
     this.burst(0.6, 3500, 0.35, 'highpass');
     this.tone(120, 0.3, 'sine', 0.15, 0, 60);
+  }
+  /** Rolling thunder: a crack, then a low rumble. */
+  thunder(): void {
+    this.burst(0.12, 3000, 0.5, 'highpass');
+    this.burst(1.4, 180, 0.6, 'lowpass');
+    this.tone(55, 1.0, 'sine', 0.25, 0.05, 35);
+  }
+  zap(): void {
+    this.burst(0.3, 5000, 0.4, 'highpass');
+    this.tone(1200, 0.25, 'sawtooth', 0.12, 0, 200);
+  }
+  whoosh(): void {
+    this.burst(0.6, 700, 0.25, 'bandpass');
   }
   honk(): void {
     this.tone(440, 0.18, 'square', 0.09);

@@ -1,4 +1,5 @@
 import type { GliderStyle, Loadout, RocketStyle, SledStyle } from '../game/upgrades';
+import { HEAD, drawFace, drawPandaSprite, headAt, pandaFrame } from './pandaSprite';
 
 export type Mood = 'happy' | 'excited' | 'scared' | 'dizzy' | 'sleepy';
 
@@ -18,8 +19,7 @@ export interface PandaPose {
 }
 
 const BLACK = '#1f1d24';
-const WHITE = '#fbfbf7';
-const SHADOW = '#d9dde3';
+const INK = '#2a2340';
 
 /**
  * Draws the panda and its gear, entirely from primitives. Local space is in
@@ -50,11 +50,30 @@ export function drawPanda(
   drawScarf(ctx, pose);
   if (hasGlider) drawGliderBack(ctx, gear.glider.style, gear.glider.color, gear.glider.span, pose);
   if (hasRocket) drawRocket(ctx, gear.rocket.style, gear.rocket.color, pose.time);
-  drawBody(ctx, pose, hasGlider);
-  drawSled(ctx, gear.sled.style, gear.sled.color, pose.time);
-  drawHead(ctx, pose);
-  if (gs === 'propeller') drawBeanie(ctx, gear.glider.color, pose);
+  // The arm reaching for the glider bar goes behind the head.
   if (hasGlider) drawGliderArms(ctx);
+
+  // Body and head: one baked sprite, squashed and stretched live around the seat.
+  const frame = pandaFrame(pose.time, pose.mood);
+  const flap = pose.flap ?? 0;
+  const stretch = (pose.boosting ? 0.05 : 0) + flap * 0.08;
+  const shiver = pose.mood === 'scared' ? Math.sin(pose.time * 55) * 0.012 : 0;
+  ctx.save();
+  ctx.translate(shiver, 0.35);
+  ctx.scale(1 + stretch, 1 - stretch * 0.8);
+  ctx.translate(0, -0.35);
+  drawPandaSprite(ctx, frame);
+  drawScarfBand(ctx, frame);
+  drawPaw(ctx, pose, hasGlider);
+  ctx.restore();
+  drawSled(ctx, gear.sled.style, gear.sled.color, pose.time);
+  ctx.save();
+  ctx.translate(shiver, 0.35);
+  ctx.scale(1 + stretch, 1 - stretch * 0.8);
+  ctx.translate(0, -0.35);
+  drawFace(ctx, frame, pose.mood, pose.time);
+  if (gs === 'propeller') drawBeanie(ctx, gear.glider.color, pose, frame);
+  ctx.restore();
 
   ctx.restore();
 }
@@ -69,13 +88,13 @@ function drawScarf(ctx: CanvasRenderingContext2D, pose: PandaPose) {
   const amp = 0.05 + pose.wind * 0.08;
   for (let k = 0; k < 2; k++) {
     ctx.beginPath();
-    ctx.moveTo(0.42, -0.12 + k * 0.06);
+    ctx.moveTo(0.34, -0.12 + k * 0.06);
     const n = 8;
     for (let i = 1; i <= n; i++) {
       const t = i / n;
-      const x = 0.42 - t * len - k * 0.1;
+      const x = 0.34 - t * len - k * 0.1;
       const droop = (1 - pose.wind) * t * 0.35;
-      const y = -0.16 + k * 0.08 + droop + Math.sin(pose.time * 14 + t * 6 + k) * amp * t;
+      const y = -0.14 + k * 0.08 + droop + Math.sin(pose.time * 14 + t * 6 + k) * amp * t;
       ctx.lineTo(x, y);
     }
     ctx.strokeStyle = k ? '#b8302a' : '#e2493b';
@@ -84,142 +103,40 @@ function drawScarf(ctx: CanvasRenderingContext2D, pose: PandaPose) {
   }
 }
 
-function drawBody(ctx: CanvasRenderingContext2D, pose: PandaPose, holdingBar: boolean) {
-  // Far legs.
-  ctx.fillStyle = '#121116';
-  ellipse(ctx, -0.5, 0.06, 0.22, 0.13, 0.3);
-  ctx.fill();
-  if (!holdingBar) {
-    ellipse(ctx, 0.62, 0.18, 0.2, 0.11, -0.3);
-    ctx.fill();
-  }
-
-  // Torso.
-  ctx.fillStyle = WHITE;
-  ellipse(ctx, 0, 0, 0.6, 0.38);
-  ctx.fill();
-  ctx.save();
-  ellipse(ctx, 0, 0, 0.6, 0.38);
-  ctx.clip();
-  ctx.fillStyle = SHADOW;
-  ellipse(ctx, -0.05, 0.28, 0.65, 0.2);
-  ctx.fill();
+/** The near front paw: gripping the sled, or reaching forward under boost. */
+function drawPaw(ctx: CanvasRenderingContext2D, pose: PandaPose, holdingBar: boolean) {
+  if (holdingBar) return;
+  const reach = pose.boosting ? 0.1 : 0;
+  const wave = pose.mood === 'excited' ? Math.sin(pose.time * 14) * 0.06 : 0;
   ctx.fillStyle = BLACK;
-  ellipse(ctx, 0.3, 0.02, 0.17, 0.45, -0.15);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 0.05;
+  ellipse(ctx, 0.58 + reach, 0.2 - reach + wave, 0.24, 0.13, -0.45 + reach * 3);
+  ctx.stroke();
   ctx.fill();
-  ctx.restore();
-
-  // Tail.
-  ctx.fillStyle = WHITE;
-  ellipse(ctx, -0.6, -0.16, 0.09, 0.08);
-  ctx.fill();
-
-  // Near legs.
-  ctx.fillStyle = BLACK;
-  const kick = Math.sin(pose.time * 9) * 0.06 * (pose.mood === 'scared' ? 1 : 0.2);
-  ellipse(ctx, -0.46, 0.2 + kick, 0.24, 0.14, 0.2);
-  ctx.fill();
-  if (!holdingBar) {
-    const reach = pose.boosting ? 0.1 : 0;
-    ellipse(ctx, 0.62 + reach, 0.26 - reach, 0.24, 0.12, -0.4 + reach * 3);
-    ctx.fill();
-  }
 }
 
-function drawHead(ctx: CanvasRenderingContext2D, pose: PandaPose) {
-  const hx = 0.74;
-  const hy = -0.2;
-  ctx.fillStyle = BLACK;
-  ellipse(ctx, hx - 0.24, hy - 0.25, 0.12, 0.11);
-  ctx.fill();
-  ellipse(ctx, hx + 0.24, hy - 0.25, 0.12, 0.11);
-  ctx.fill();
-
-  ctx.fillStyle = WHITE;
-  ellipse(ctx, hx, hy, 0.36, 0.32);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+/** The red scarf wrapped round the neck, hugging the bottom of the head. */
+function drawScarfBand(ctx: CanvasRenderingContext2D, frame: number) {
+  const h = headAt(frame);
+  const arc = () => {
+    ctx.beginPath();
+    ctx.ellipse(h.x, h.y, HEAD.rx + 0.01, HEAD.ry + 0.01, 0, Math.PI * 0.55, Math.PI * 0.98);
+  };
+  ctx.lineCap = 'round';
+  arc();
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 0.17;
+  ctx.stroke();
+  ctx.strokeStyle = '#e2493b';
+  ctx.lineWidth = 0.11;
+  ctx.stroke();
+  // A darker fold along the band.
+  ctx.beginPath();
+  ctx.ellipse(h.x, h.y, HEAD.rx + 0.03, HEAD.ry + 0.03, 0, Math.PI * 0.62, Math.PI * 0.92);
+  ctx.strokeStyle = '#b8302a';
   ctx.lineWidth = 0.03;
   ctx.stroke();
-
-  // Eye patches.
-  ctx.fillStyle = BLACK;
-  ellipse(ctx, hx - 0.13, hy - 0.01, 0.09, 0.12, 0.5);
-  ctx.fill();
-  ellipse(ctx, hx + 0.13, hy - 0.01, 0.09, 0.12, -0.5);
-  ctx.fill();
-
-  // Eyes.
-  if (pose.mood === 'dizzy') {
-    ctx.strokeStyle = WHITE;
-    ctx.lineWidth = 0.035;
-    for (const ex of [hx - 0.12, hx + 0.12]) {
-      ctx.beginPath();
-      ctx.moveTo(ex - 0.04, hy - 0.05);
-      ctx.lineTo(ex + 0.04, hy + 0.03);
-      ctx.moveTo(ex + 0.04, hy - 0.05);
-      ctx.lineTo(ex - 0.04, hy + 0.03);
-      ctx.stroke();
-    }
-  } else if (pose.mood === 'sleepy') {
-    ctx.strokeStyle = WHITE;
-    ctx.lineWidth = 0.03;
-    for (const ex of [hx - 0.12, hx + 0.12]) {
-      ctx.beginPath();
-      ctx.arc(ex, hy - 0.02, 0.035, 0.2, Math.PI - 0.2);
-      ctx.stroke();
-    }
-  } else {
-    const big = pose.mood === 'scared' ? 0.05 : 0.04;
-    for (const ex of [hx - 0.115, hx + 0.125]) {
-      ctx.fillStyle = WHITE;
-      ellipse(ctx, ex, hy - 0.02, big, big * 1.1);
-      ctx.fill();
-      ctx.fillStyle = BLACK;
-      ellipse(ctx, ex + 0.012, hy - 0.015, big * 0.55, big * 0.6);
-      ctx.fill();
-      ctx.fillStyle = WHITE;
-      ellipse(ctx, ex + 0.002, hy - 0.035, big * 0.2, big * 0.2);
-      ctx.fill();
-    }
-  }
-
-  // Cheeks.
-  ctx.fillStyle = 'rgba(255,130,150,0.45)';
-  ellipse(ctx, hx - 0.21, hy + 0.12, 0.06, 0.04);
-  ctx.fill();
-  ellipse(ctx, hx + 0.21, hy + 0.12, 0.06, 0.04);
-  ctx.fill();
-
-  // Nose & mouth.
-  ctx.fillStyle = BLACK;
-  ellipse(ctx, hx, hy + 0.1, 0.05, 0.035);
-  ctx.fill();
-  ctx.strokeStyle = BLACK;
-  ctx.lineWidth = 0.025;
-  if (pose.mood === 'scared') {
-    ctx.fillStyle = '#5b1f2a';
-    ellipse(ctx, hx, hy + 0.2, 0.04, 0.055);
-    ctx.fill();
-  } else if (pose.mood === 'excited') {
-    ctx.fillStyle = '#5b1f2a';
-    ctx.beginPath();
-    ctx.moveTo(hx - 0.08, hy + 0.15);
-    ctx.quadraticCurveTo(hx, hy + 0.3, hx + 0.08, hy + 0.15);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#ff7f8f';
-    ellipse(ctx, hx, hy + 0.21, 0.035, 0.02);
-    ctx.fill();
-  } else {
-    ctx.beginPath();
-    ctx.moveTo(hx, hy + 0.13);
-    ctx.lineTo(hx, hy + 0.16);
-    ctx.moveTo(hx - 0.06, hy + 0.15);
-    ctx.quadraticCurveTo(hx - 0.03, hy + 0.19, hx, hy + 0.16);
-    ctx.quadraticCurveTo(hx + 0.03, hy + 0.19, hx + 0.06, hy + 0.15);
-    ctx.stroke();
-  }
 }
 
 function drawSled(ctx: CanvasRenderingContext2D, style: SledStyle, color: string, time: number) {
@@ -442,6 +359,55 @@ function drawSled(ctx: CanvasRenderingContext2D, style: SledStyle, color: string
       ctx.fillRect(-0.7, 0.45, 1.4, 0.025);
       break;
     }
+    case 'jetski': {
+      // A chunky pink jet ski: hull, white stripe, handlebars and a little windscreen.
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(-0.85, 0.12);
+      ctx.lineTo(0.55, 0.12);
+      ctx.quadraticCurveTo(1.05, 0.14, 1.15, 0.36);
+      ctx.quadraticCurveTo(0.9, 0.56, 0.3, 0.56);
+      ctx.lineTo(-0.75, 0.56);
+      ctx.quadraticCurveTo(-0.95, 0.4, -0.85, 0.12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#2a2340';
+      ctx.lineWidth = 0.035;
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(-0.8, 0.32);
+      ctx.lineTo(0.95, 0.32);
+      ctx.lineTo(0.9, 0.39);
+      ctx.lineTo(-0.8, 0.39);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#2a2340';
+      ctx.fillRect(-0.85, 0.47, 1.7, 0.09);
+      // Windscreen and handlebar.
+      ctx.fillStyle = 'rgba(160,225,255,0.75)';
+      ctx.beginPath();
+      ctx.moveTo(0.62, 0.12);
+      ctx.lineTo(0.78, -0.12);
+      ctx.lineTo(0.9, 0.13);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#3a3f4b';
+      ctx.lineWidth = 0.06;
+      ctx.beginPath();
+      ctx.moveTo(0.6, 0.12);
+      ctx.lineTo(0.66, -0.06);
+      ctx.stroke();
+      // Spray from the jet.
+      const spray = 0.5 + 0.5 * Math.sin(time * 25);
+      ctx.fillStyle = `rgba(200,235,255,${0.5 + spray * 0.3})`;
+      for (let i = 0; i < 4; i++) {
+        ellipse(ctx, -0.95 - i * 0.12, 0.5 - i * 0.04 - spray * 0.03, 0.07 - i * 0.012, 0.05 - i * 0.008);
+        ctx.fill();
+      }
+      break;
+    }
     case 'hover': {
       const glow = 0.5 + 0.5 * Math.sin(time * 10);
       ctx.fillStyle = `rgba(80,255,230,${0.25 + glow * 0.25})`;
@@ -647,6 +613,31 @@ function drawRocket(ctx: CanvasRenderingContext2D, style: RocketStyle, color: st
       rocketTube(ctx, cx, cy - r * 1.05, len, r, color, '#e2493b', false);
       rocketTube(ctx, cx + 0.05, cy + r * 1.05, len, r, color, '#e2493b', false);
       break;
+    case 'thunder': {
+      rocketTube(ctx, cx, cy, len, r, color, '#2f4fd1', true);
+      // A lightning bolt decal and crackling arcs between the fins.
+      ctx.fillStyle = '#2f4fd1';
+      ctx.beginPath();
+      ctx.moveTo(cx - 0.18, cy - r * 0.8);
+      ctx.lineTo(cx - 0.3, cy + r * 0.05);
+      ctx.lineTo(cx - 0.22, cy + r * 0.05);
+      ctx.lineTo(cx - 0.3, cy + r * 0.8);
+      ctx.lineTo(cx - 0.12, cy - r * 0.1);
+      ctx.lineTo(cx - 0.2, cy - r * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      if (Math.sin(time * 23) > 0.2) {
+        ctx.strokeStyle = 'rgba(160,220,255,0.9)';
+        ctx.lineWidth = 0.025;
+        ctx.beginPath();
+        ctx.moveTo(cx - len / 2, cy - r - 0.1);
+        ctx.lineTo(cx - len / 2 + 0.08, cy - r * 0.3);
+        ctx.lineTo(cx - len / 2 - 0.02, cy + r * 0.2);
+        ctx.lineTo(cx - len / 2 + 0.06, cy + r + 0.1);
+        ctx.stroke();
+      }
+      break;
+    }
     case 'ion': {
       rocketTube(ctx, cx, cy, len, r, '#dfe7f2', '#3a4a66', false);
       const glow = 0.5 + 0.5 * Math.sin(time * 12);
@@ -686,6 +677,7 @@ const FLAME_PALETTES = {
   ion: { glow: '60,130,255', mid: '130,210,255', core: '235,250,255' },
   steam: { glow: '200,225,255', mid: '235,245,255', core: '255,255,255' },
   magma: { glow: '255,60,20', mid: '255,140,40', core: '255,235,160' },
+  thunder: { glow: '110,140,255', mid: '255,235,120', core: '255,255,255' },
 };
 
 /** Exhaust: additive glow, flickering tongues, a white-hot core and shock diamonds. */
@@ -693,7 +685,16 @@ function drawFlame(ctx: CanvasRenderingContext2D, style: RocketStyle, time: numb
   const { len, r } = rocketSize(style);
   const fx = ROCKET_X - len / 2 - 0.05;
   const steamy = style === 'soda' || style === 'cola' || style === 'kettle';
-  const pal = style === 'ion' ? FLAME_PALETTES.ion : steamy ? FLAME_PALETTES.steam : style === 'magma' ? FLAME_PALETTES.magma : FLAME_PALETTES.fire;
+  const pal =
+    style === 'ion'
+      ? FLAME_PALETTES.ion
+      : steamy
+        ? FLAME_PALETTES.steam
+        : style === 'magma'
+          ? FLAME_PALETTES.magma
+          : style === 'thunder'
+            ? FLAME_PALETTES.thunder
+            : FLAME_PALETTES.fire;
   const ys = style === 'twin' ? [ROCKET_Y - r * 1.05, ROCKET_Y + r * 1.05] : [ROCKET_Y];
   const L = (0.9 + power * 1.4) * (style === 'cola' ? 1.4 : style === 'firework' ? 0.8 : 1);
   const W = Math.max(0.1, r * 0.95);
@@ -751,12 +752,12 @@ function drawGliderBack(ctx: CanvasRenderingContext2D, style: GliderStyle, color
   ctx.beginPath();
   if (style === 'parasol') {
     ctx.moveTo(0.05, wy);
-    ctx.lineTo(0.5, -0.45);
+    ctx.lineTo(0.26, -0.6);
   } else {
     ctx.moveTo(0.05, wy + 0.08);
     ctx.lineTo(0.0, -0.3);
     ctx.moveTo(0.05, wy + 0.08);
-    ctx.lineTo(0.55, -0.5);
+    ctx.lineTo(0.26, -0.6);
     ctx.moveTo(0.05, wy + 0.08);
     ctx.lineTo(-0.35, -0.48);
   }
@@ -959,6 +960,50 @@ function drawGliderBack(ctx: CanvasRenderingContext2D, style: GliderStyle, color
       }
       break;
     }
+    case 'kite': {
+      // A big two-tone stunt kite with ribs and streaming ribbons.
+      const w = c * 0.62;
+      ctx.beginPath();
+      ctx.moveTo(w, 0.04);
+      ctx.lineTo(0.1, -0.5 - flex);
+      ctx.lineTo(-w, 0.0);
+      ctx.lineTo(0.05, 0.1);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = '#ffd23d';
+      ctx.beginPath();
+      ctx.moveTo(0.1, -0.6);
+      ctx.lineTo(-w, 0);
+      ctx.lineTo(0.05, 0.12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = '#1b3f73';
+      ctx.lineWidth = 0.03;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(w, 0.04);
+      ctx.lineTo(-w, 0.0);
+      ctx.moveTo(0.1, -0.5 - flex);
+      ctx.lineTo(0.05, 0.1);
+      ctx.stroke();
+      // Ribbons off the trailing tip.
+      ctx.lineWidth = 0.05;
+      for (let k = 0; k < 2; k++) {
+        ctx.strokeStyle = k ? '#ffd23d' : '#e2493b';
+        ctx.beginPath();
+        ctx.moveTo(-w, 0);
+        for (let i = 1; i <= 6; i++) {
+          const t = i / 6;
+          ctx.lineTo(-w - t * (0.7 + pose.wind * 0.5), Math.sin(pose.time * 12 + t * 5 + k) * 0.08 * t + k * 0.06 + (1 - pose.wind) * t * 0.3);
+        }
+        ctx.stroke();
+      }
+      break;
+    }
     case 'carbon': {
       ctx.beginPath();
       ctx.moveTo(c * 0.55, 0.02);
@@ -1045,9 +1090,10 @@ function drawCarpet(ctx: CanvasRenderingContext2D, color: string, pose: PandaPos
 }
 
 /** Propeller beanie: a striped cap with a spinning rotor. */
-function drawBeanie(ctx: CanvasRenderingContext2D, color: string, pose: PandaPose) {
-  const hx = 0.74;
-  const hy = -0.48;
+function drawBeanie(ctx: CanvasRenderingContext2D, color: string, pose: PandaPose, frame: number) {
+  const head = headAt(frame);
+  const hx = head.x;
+  const hy = head.y - 0.32;
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.arc(hx, hy + 0.05, 0.3, Math.PI, 0);
@@ -1073,14 +1119,21 @@ function drawBeanie(ctx: CanvasRenderingContext2D, color: string, pose: PandaPos
 }
 
 function drawGliderArms(ctx: CanvasRenderingContext2D) {
-  // Arms reaching up to the control bar.
-  ctx.strokeStyle = BLACK;
-  ctx.lineWidth = 0.2;
+  // An arm reaching up from the shoulder to the control bar, behind the head.
+  ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(0.35, -0.05);
-  ctx.lineTo(0.5, -0.45);
+  ctx.moveTo(0.12, -0.08);
+  ctx.quadraticCurveTo(0.1, -0.38, 0.25, -0.58);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 0.27;
+  ctx.stroke();
+  ctx.strokeStyle = BLACK;
+  ctx.lineWidth = 0.19;
   ctx.stroke();
   ctx.fillStyle = BLACK;
-  ellipse(ctx, 0.52, -0.5, 0.1, 0.1);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 0.04;
+  ellipse(ctx, 0.26, -0.61, 0.11, 0.1);
   ctx.fill();
+  ctx.stroke();
 }

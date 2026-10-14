@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { autopilot } from '../src/game/autopilot';
-import { CANYON, VALLEY, type MapDef } from '../src/game/maps';
+import { CANYON, STORM, VALLEY, type MapDef } from '../src/game/maps';
 import { Flight } from '../src/game/flight';
 import {
   CATALOG,
@@ -93,6 +93,24 @@ describe('balance', () => {
     console.log(`canyon with canyon endgame gear: ${canyonBest.distance.toFixed(0)} m, kills ${canyonBest.kills}`);
     expect(canyonValleyGear.distance).toBeLessThan(CANYON.goal);
     expect(canyonBest.distance).toBeGreaterThan(CANYON.goal);
+  });
+
+  it('the storm coast needs its own gear', () => {
+    const canyonEnd = loadoutFor(
+      { ramp: 'volcano', sled: 'obsidian', glider: 'phoenix', rocket: 'magma', fuel: 'lavacell', weapon: 'laser' },
+      [],
+      ['shield', 'suit'],
+    );
+    const stormEnd = loadoutFor(
+      { ramp: 'cliff', sled: 'jetski', glider: 'stormkite', rocket: 'thunder', fuel: 'stormcell', weapon: 'zapper' },
+      [],
+      ['shield', 'rod'],
+    );
+    const a = fly(canyonEnd, 1234, 1, STORM);
+    const b = fly(stormEnd, 1234, 1, STORM);
+    console.log(`storm with canyon endgame gear: ${a.distance.toFixed(0)} m; with storm gear: ${b.distance.toFixed(0)} m`);
+    expect(a.distance).toBeLessThan(STORM.goal);
+    expect(b.distance).toBeGreaterThan(STORM.goal);
   });
 
   it('is deterministic', () => {

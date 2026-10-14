@@ -9,8 +9,10 @@ every flight and spends it on gear — day after day — until it reaches
 Reaching Panda Paradise unlocks a second map, **Ember Canyon**: sunset
 mesas, a smoking volcano, lava pools and hostile skies, with the **Golden
 Pagoda** 11,000 m away. It pays 1.6× and opens two new shops (Weapons and
-Gadgets) plus top-tier gear. Switch maps with the 🗺️ button in the hangar;
-each map keeps its own records and goal.
+Gadgets) plus top-tier gear. Reaching the pagoda unlocks a third map,
+**Storm Coast**: a chain of islands across open sea under a brewing storm,
+with **The Lighthouse** 15,000 m away (2.2× pay). Switch maps with the 🗺️
+button in the hangar; each map keeps its own records and goal.
 
 ## Ember Canyon
 
@@ -32,6 +34,25 @@ each map keeps its own records and goal.
 - **Canyon-only gear** (locked until the map unlocks): Volcano Ramp,
   Obsidian Board, Phoenix Wings, Magma Thruster and Lava Cell fuel.
 
+## Storm Coast
+
+- **Open sea**: islands poke out of the water. Land on the sea and you skid
+  and skip, but it drags you down fast unless you have the right gear.
+- **Wind gusts**: bands of streaking air. Tailwinds (blue) shove you
+  forwards, headwinds (red) hold you back. A Wind Sock sensor shows the wind.
+- **Lightning**: in the Open Sea and the Storm Front, strikes are telegraphed
+  by a flickering column and a ring on the ground, then hit about a second
+  later. They aim where you are heading, so change speed or height to dodge.
+  They only strike below the storm clouds (~650 m) and fry enemies too.
+- **Enemies**: seagulls cruise in and then swoop, and flying fish leap out of
+  the sea to intercept you.
+- **Storm gear** (locked until the map unlocks): Sea Cliff Ramp (tallest
+  drop), Jet Ski (skims and skips on water), Storm Kite (rides gusts 70%
+  harder), Thunderbolt rocket (lightning tops it up), Storm Battery, Thunder
+  Staff (chain lightning that arcs to three more enemies), Wind Sock sensor,
+  and gadgets: Water Wings (bounce off the sea), Pocket Sail (more wind) and
+  Lightning Rod (a strike becomes a speed boost).
+
 ## Building your flying machine
 
 The hangar has a shop for each kind of gear: ramps, sleds, gliders, rockets
@@ -48,13 +69,16 @@ compared to what you have equipped.
 - **Fuel tanks**: capacity and weight.
 - **Weapons** and **Gadgets**: see Ember Canyon above.
 
-- **Sensors**: cockpit instruments on a panel at the bottom of the screen —
-  airspeed indicator, vertical speed indicator, altimeter, radar altimeter
-  with a TERRAIN light, pitch indicator, attitude indicator (artificial
-  horizon with a flight-path marker), angle-of-attack gauge, fuel gauge, a
-  STALL warning light, or the Wrist Computer's LCD. Without a sensor the
-  reading is hidden. Equip several at once, but only one per slot (speed,
-  altitude, pitch, stall, fuel); the Wrist Computer bundles three slots.
+- **Sensors**: cockpit instruments, each a chunky cartoon dial with its own
+  name tag, tucked into the bottom corners of the screen (attitude and speed
+  on the left, height, climb, fuel and wind on the right; beside the thumb
+  buttons on touch screens). Airspeed indicator, vertical speed indicator,
+  altimeter, radar altimeter with a TERRAIN light, pitch indicator, attitude
+  indicator (artificial horizon with a flight-path marker), angle-of-attack
+  gauge, fuel gauge, wind sock, a STALL warning light, or the Wrist
+  Computer's LCD. Without a sensor the reading is hidden. Equip several at
+  once, but only one per slot (speed, altitude, pitch, stall, fuel, wind);
+  the Wrist Computer bundles three slots.
 
 Many items also have a **perk** (purple badge in the shop): spring-loaded
 kickers (Bamboo Catapult, Spring Board), an icy ramp deck (Ice Chute), sleds
@@ -98,11 +122,14 @@ Nothing is a bitmap or audio file — everything is generated at runtime:
 - **Terrain**: seeded fractal noise; hills grow taller with distance. The
   landscape is fixed per save, pickups reshuffle every day.
 - **Maps**: each map is a data description (`src/game/maps.ts`): biomes,
-  terrain style, sky colours and payout. Ember Canyon uses terraced mesas.
+  terrain style, sky colours and payout. Ember Canyon uses terraced mesas;
+  Storm Coast sinks its hills below a sea level so only islands remain.
 - **Biomes**: Snowy Peaks → Pine Valley → Flower Meadows → Bamboo Forest →
-  Panda Paradise, and Ash Slopes → Red Canyon → Lava Fields → Crystal Ridge →
-  Golden Pagoda, blended by distance (ground, decorations, sky tint).
-- **Enemies and thermals**: spawned from the biome's settings and a seeded RNG.
+  Panda Paradise; Ash Slopes → Red Canyon → Lava Fields → Crystal Ridge →
+  Golden Pagoda; and Palm Beach → Coral Shallows → Open Sea → Storm Front →
+  The Lighthouse, blended by distance (ground, decorations, sky tint, rain).
+- **Enemies, thermals, gusts and lightning**: spawned from the biome's
+  settings and a seeded RNG.
 - **Trees**: grown from seeds — layered conifers (snowy or not), recursively
   branching oaks, birches and cherry blossoms, bare winter trees, bamboo groves
   and bushes; in the canyon, cacti, palms, shrubs and charred trunks. Each is rendered once into a cached sprite sized to its exact
@@ -119,9 +146,15 @@ Nothing is a bitmap or audio file — everything is generated at runtime:
   reach, so fast flights don't skip through coins or rings.
 - **Ramps**: laid along the mountain profile, ending in a kicker curve
   (a Hermite spline tangent to the hillside) that sets the launch angle.
-- **Panda & gear**: drawn from canvas primitives (8 sleds, 8 gliders,
-  7 rockets) with moods (happy, excited, scared, dizzy, sleepy) and running
-  commentary in speech bubbles.
+- **Panda**: body and head are one procedurally generated sprite: torso,
+  neck, head, ears, tail and legs are unioned into a single outlined
+  silhouette, shaded and patched, then baked per size into a cached
+  offscreen canvas. An 8-frame cycle (breathing, head bob, ear wiggle,
+  paddling feet) is baked in, it squashes and stretches live when boosting
+  or flapping, and the face (blinks, moods: happy, excited, scared, dizzy,
+  sleepy) is drawn live on top.
+- **Gear**: drawn from canvas primitives, with running commentary in speech
+  bubbles.
 - **Rocket flame**: additive glow, flickering flame tongues, shock diamonds at
   full power, embers and billowing smoke; each rocket has its own palette.
 - **Sound**: WebAudio synthesis (wind, rocket, coins, impacts, weapons,
@@ -136,7 +169,7 @@ src/
   render/    canvas rendering: camera, background, terrain, panda, enemies, pickups, particles
   ui/        DOM overlays: HUD, title, hangar, shops, results, pause, quips
   main.ts    game state machine and fixed-timestep loop (120 Hz)
-tests/       vitest: world/RNG, economy, combat, and a balance test that flies every tier
+tests/       vitest: world/RNG, economy, combat, storm, and a balance test that flies every tier
 ```
 
 Balancing lives in `src/game/upgrades.ts` (the item catalogue — gliders are

@@ -557,6 +557,9 @@ kbd {
 .hangar.map-canyon .goal-fill {
   background: repeating-linear-gradient(-45deg, #ffb238 0 10px, #ff7a3d 10px 20px);
 }
+.hangar.map-storm .goal-fill {
+  background: repeating-linear-gradient(-45deg, #7fd8ff 0 10px, #20a4f3 10px 20px);
+}
 .sticker.lock {
   background: #7d8794;
 }
@@ -1041,15 +1044,26 @@ kbd {
     opacity: 0.45;
   }
 }
-#instruments {
+/* Cockpit gauges live in the bottom corners, each one its own sticker. */
+.instruments {
   position: absolute;
-  left: 50%;
-  bottom: calc(10px + var(--safe-b));
-  transform: translateX(-50%);
+  bottom: calc(8px + var(--safe-b));
   pointer-events: none;
-  filter: drop-shadow(0 6px 10px rgba(20, 20, 40, 0.25));
 }
-#instruments.raised {
+#instruments-left {
+  left: calc(8px + var(--safe-l));
+}
+#instruments-right {
+  right: calc(8px + var(--safe-r));
+}
+/* Touch screens: sit beside the thumb buttons, or above them on narrow phones. */
+#instruments-left.beside-pad {
+  left: calc(104px + var(--safe-l));
+}
+#instruments-right.beside-pad {
+  right: calc(128px + var(--safe-r));
+}
+.instruments.raised {
   bottom: calc(190px + var(--safe-b));
 }
 #toast {

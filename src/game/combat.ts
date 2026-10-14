@@ -48,6 +48,8 @@ export const ENEMY_STATS: Record<EnemyKind, { hp: number; radius: number; speed:
   crow: { hp: 1, radius: 1.1, speed: 17, bounty: 8 },
   bat: { hp: 2, radius: 1.0, speed: 22, bounty: 12 },
   bandit: { hp: 4, radius: 2.2, speed: 4, bounty: 30 },
+  gull: { hp: 1, radius: 1.2, speed: 19, bounty: 10 },
+  fish: { hp: 1, radius: 0.9, speed: 0, bounty: 14 },
 };
 
 export function makeEnemy(id: number, kind: EnemyKind, x: number, y: number): Enemy {
@@ -101,14 +103,29 @@ export function updateEnemy(e: Enemy, px: number, py: number, pvx: number, pvy: 
     }
     return null;
   }
-  // Crows and bats home in, turning at a limited rate so they can be dodged.
+  if (e.kind === 'fish') {
+    // Flying fish leap out of the sea in a ballistic arc.
+    e.vy -= 9.81 * dt;
+    e.x += e.vx * dt;
+    e.y += e.vy * dt;
+    return null;
+  }
+  if (e.kind === 'gull' && Math.abs(dx) > 38) {
+    // Gulls cruise in level, bobbing on the wind, then swoop when close.
+    e.vx = Math.sign(dx) * s.speed * 0.8;
+    e.vy = clamp(dy * 0.4, -6, 6) + Math.sin(e.age * 3) * 2;
+    e.x += e.vx * dt;
+    e.y += e.vy * dt;
+    return null;
+  }
+  // Crows, bats and swooping gulls home in, turning at a limited rate so they can be dodged.
   const speed = s.speed;
   const want = Math.atan2(dy, dx);
   const cur = e.vx || e.vy ? Math.atan2(e.vy, e.vx) : want;
   let diff = want - cur;
   while (diff > Math.PI) diff -= Math.PI * 2;
   while (diff < -Math.PI) diff += Math.PI * 2;
-  const turn = (e.kind === 'bat' ? 2.2 : 1.6) * dt;
+  const turn = (e.kind === 'bat' ? 2.2 : e.kind === 'gull' ? 2 : 1.6) * dt;
   const ang = cur + clamp(diff, -turn, turn);
   e.vx = Math.cos(ang) * speed;
   e.vy = Math.sin(ang) * speed + (e.kind === 'bat' ? Math.sin(e.age * 9) * 9 : 0);

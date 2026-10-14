@@ -14,12 +14,28 @@ export interface SkyColors {
   space: number;
 }
 
+const STORM_TOP = hexToRgb('#1c2233');
+const STORM_BOTTOM = hexToRgb('#5d6b7d');
+
+/** 0..1: how rainy and dark the weather is at x (storm maps only). */
+export function storminess(world: World, x: number): number {
+  if (!world.map.sky.storm) return 0;
+  const b = world.biomeAt(x);
+  return (b.a.rain ?? 0) * (1 - b.t) + (b.b.rain ?? 0) * b.t;
+}
+
 export function skyColors(world: World, altitude: number, x: number): SkyColors {
   const sky = world.map.sky;
   const hi = invLerp(200, 1800, altitude);
   const sp = invLerp(1500, 4000, altitude);
   let top = mixRgb(mixRgb(sky.lowTop, sky.highTop, hi), SPACE_TOP, sp);
   let bottom = mixRgb(mixRgb(sky.lowBottom, sky.highBottom, hi), SPACE_BOTTOM, sp);
+  // Storm clouds darken the sky below them; climb above and it clears.
+  const storm = storminess(world, x) * 0.75 * (1 - invLerp(300, 1200, altitude));
+  if (storm > 0) {
+    top = mixRgb(top, STORM_TOP, storm);
+    bottom = mixRgb(bottom, STORM_BOTTOM, storm);
+  }
   // The goal area glows warmly.
   const goalName = world.map.goalName;
   const b = world.biomeAt(x);
@@ -92,9 +108,11 @@ export class Background {
     ctx.fillRect(0, 0, w, h);
 
     if (sky.space > 0.01) this.drawStars(ctx, cam, sky.space, time);
-    this.drawSun(ctx, cam, sky, world);
+    const storm = storminess(world, cam.x) * (1 - invLerp(300, 1200, cam.y));
+    this.drawSun(ctx, cam, sky, world, storm);
     if (world.map.sky.volcano) this.drawVolcano(ctx, cam, sky, time);
-    this.drawFarClouds(ctx, cam, sky);
+    this.drawFarClouds(ctx, cam, sky, storm);
+    if (storm > 0.25) this.drawSheetLightning(ctx, cam, time, storm);
     this.drawMountains(ctx, cam, sky, world);
   }
 
@@ -112,7 +130,23 @@ export class Background {
     ctx.globalAlpha = 1;
   }
 
-  private drawSun(ctx: CanvasRenderingContext2D, cam: Camera, sky: SkyColors, world: World) {
+  /** Distant flickers inside the clouds every so often. */
+  private drawSheetLightning(ctx: CanvasRenderingContext2D, cam: Camera, time: number, storm: number) {
+    const slot = Math.floor(time * 3);
+    if (hash(this.seed, slot, 977) > 0.06 * storm) return;
+    const phase = time * 3 - slot;
+    const a = Math.max(0, 1 - phase * 2.5) * 0.35 * storm;
+    const x = cam.w * (0.15 + hash(this.seed, slot, 978) * 0.7);
+    const y = cam.h * (0.1 + hash(this.seed, slot, 979) * 0.25);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, cam.w * 0.35);
+    g.addColorStop(0, `rgba(230,235,255,${a})`);
+    g.addColorStop(1, 'rgba(230,235,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, cam.w, cam.h);
+  }
+
+  private drawSun(ctx: CanvasRenderingContext2D, cam: Camera, sky: SkyColors, world: World, storm = 0) {
+    ctx.globalAlpha = 1 - storm * 0.85;
     const style = world.map.sky;
     const x = cam.w * 0.8;
     const y = cam.h * 0.2 + clamp(-cam.y * 0.02, -40, 40);
@@ -126,6 +160,7 @@ export class Background {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   /** A distant smoking volcano behind the mountain ranges. */
@@ -171,17 +206,18 @@ export class Background {
     }
   }
 
-  private drawFarClouds(ctx: CanvasRenderingContext2D, cam: Camera, sky: SkyColors) {
+  private drawFarClouds(ctx: CanvasRenderingContext2D, cam: Camera, sky: SkyColors, storm = 0) {
     const p = 0.08;
     const cell = 260;
     const scale = Math.min(cam.w, cam.h) * 0.05;
     const offset = cam.x * p * 4;
     const first = Math.floor((offset - scale * 4) / cell);
     const last = Math.floor((offset + cam.w + scale * 4) / cell);
-    const color = rgb(mixRgb([255, 255, 255], sky.bottom, 0.35), 0.85 * (1 - sky.space));
-    const shadow = rgb(mixRgb(shade(sky.bottom, -0.08), sky.top, 0.2), 0.5 * (1 - sky.space));
+    const white = mixRgb([255, 255, 255], [96, 104, 120], storm * 0.8);
+    const color = rgb(mixRgb(white, sky.bottom, 0.35), 0.85 * (1 - sky.space));
+    const shadow = rgb(mixRgb(shade(sky.bottom, -0.08 - storm * 0.2), sky.top, 0.2), (0.5 + storm * 0.3) * (1 - sky.space));
     for (let i = first; i <= last; i++) {
-      if (hash(this.seed, i, 41) > 0.6) continue;
+      if (hash(this.seed, i, 41) > 0.6 + storm * 0.35) continue;
       const x = i * cell - offset + hash(this.seed, i, 42) * cell * 0.5;
       const y = cam.h * (0.12 + hash(this.seed, i, 43) * 0.3) + cam.y * 0.05;
       const s = scale * (0.7 + hash(this.seed, i, 44) * 0.8);
@@ -261,6 +297,8 @@ export class Background {
     const last = Math.floor(x1 / cell);
     if (last - first > 400) return;
     const sky = skyColors(world, cam.y, cam.x);
+    const storm = storminess(world, cam.x);
+    const puff = mixRgb([255, 255, 255], [120, 128, 142], storm * 0.75);
     for (let i = first; i <= last; i++) {
       for (let k = 0; k < 2; k++) {
         if (hash(this.seed, i, 61 + k) > 0.45) continue;
@@ -279,7 +317,7 @@ export class Background {
           sx,
           sy,
           s,
-          `rgba(255,255,255,${0.88 * (1 - thin)})`,
+          rgb(puff, 0.88 * (1 - thin)),
           rgb(mixRgb(sky.bottom, [120, 140, 170], 0.3), 0.45 * (1 - thin)),
         );
       }

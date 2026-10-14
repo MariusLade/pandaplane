@@ -5,9 +5,9 @@ import { hexToRgb, type RGB } from '../core/math';
  * biomes, terrain style, sky, scenery, hazards and enemies — is data here, so
  * the world generator and renderer stay generic.
  */
-export type MapId = 'valley' | 'canyon';
+export type MapId = 'valley' | 'canyon' | 'storm';
 
-export type EnemyKind = 'crow' | 'bandit' | 'bat';
+export type EnemyKind = 'crow' | 'bandit' | 'bat' | 'gull' | 'fish';
 
 export type PondKind = 'ice' | 'water' | 'lava';
 
@@ -33,6 +33,12 @@ export interface Biome {
   enemyGap?: number;
   /** Chance per terrain cell of a rising thermal column. */
   thermals?: number;
+  /** Chance per gust cell of a band of horizontal wind. */
+  wind?: number;
+  /** Average metres between lightning strikes; omit for fair weather. */
+  lightning?: number;
+  /** Rain intensity, 0..1. */
+  rain?: number;
 }
 
 export interface TerrainStyle {
@@ -45,6 +51,12 @@ export interface TerrainStyle {
   detail: number;
   /** Mesa terrace height in metres (0 = rolling hills). */
   terrace: number;
+  /** Sea level: everything below it is open water. Omit for dry maps. */
+  sea?: number;
+  /** Shifts the hills up or down (islands poke out of the sea). */
+  base?: number;
+  /** How far the ground dips just after the launch, metres (default 14). */
+  runout?: number;
 }
 
 export interface SkyStyle {
@@ -56,6 +68,8 @@ export interface SkyStyle {
   sunGlow: string;
   /** Volcano with a smoke plume in the far background. */
   volcano: boolean;
+  /** Brooding storm clouds and a lighthouse beam in the far background. */
+  storm?: boolean;
 }
 
 export interface MapDef {
@@ -70,6 +84,14 @@ export interface MapDef {
   /** Multiplier on flight earnings (harder maps pay more). */
   pay: number;
   seedSalt: number;
+  /** Emoji for the goal (progress bars, toasts, victory). */
+  icon: string;
+  /** What the panda says on arriving in the hangar after switching here. */
+  hello: string;
+  /** Victory story: "…our panda <story>". */
+  story: string;
+  /** What unlocking this map adds, for the unlock banner. */
+  unlockNote: string;
 }
 
 interface BiomeSpec {
@@ -84,6 +106,9 @@ interface BiomeSpec {
   enemies?: [EnemyKind, number][];
   enemyGap?: number;
   thermals?: number;
+  wind?: number;
+  lightning?: number;
+  rain?: number;
 }
 
 const biome = (b: BiomeSpec): Biome => ({
@@ -101,6 +126,9 @@ const biome = (b: BiomeSpec): Biome => ({
   enemies: b.enemies,
   enemyGap: b.enemyGap,
   thermals: b.thermals,
+  wind: b.wind,
+  lightning: b.lightning,
+  rain: b.rain,
 });
 
 const VALLEY_GOAL = 7000;
@@ -113,6 +141,10 @@ export const VALLEY: MapDef = {
   goalName: 'Panda Paradise',
   pay: 1,
   seedSalt: 0,
+  icon: '🎋',
+  hello: 'Home sweet bamboo.',
+  story: 'finally reached the sweetest bamboo in the world.',
+  unlockNote: '',
   terrain: { amp0: 10, ampGrowth: 180, ampMax: 34, ridge: 1.6, detail: 1.6, terrace: 0 },
   sky: {
     lowTop: hexToRgb('#4aa3ee'),
@@ -177,6 +209,10 @@ export const CANYON: MapDef = {
   goalName: 'Golden Pagoda',
   pay: 1.6,
   seedSalt: 4242,
+  icon: '🏯',
+  hello: 'Ember Canyon. Bring sunscreen.',
+  story: 'crossed the canyon of fire and rang the bell of the Golden Pagoda.',
+  unlockNote: 'Plus new shops: Weapons and Gadgets, and new top-tier gear.',
   terrain: { amp0: 14, ampGrowth: 150, ampMax: 58, ridge: 1.8, detail: 2.2, terrace: 9 },
   sky: {
     lowTop: hexToRgb('#6a3a8c'),
@@ -240,5 +276,87 @@ export const CANYON: MapDef = {
   ],
 };
 
-export const MAPS: Record<MapId, MapDef> = { valley: VALLEY, canyon: CANYON };
-export const MAP_ORDER: MapId[] = ['valley', 'canyon'];
+const STORM_GOAL = 15000;
+
+export const STORM: MapDef = {
+  id: 'storm',
+  name: 'Storm Coast',
+  tagline: 'A chain of islands under a brewing storm: gusts, lightning and flying fish.',
+  goal: STORM_GOAL,
+  goalName: 'The Lighthouse',
+  pay: 2.2,
+  seedSalt: 9191,
+  icon: '🗼',
+  hello: 'Storm Coast. I packed an umbrella.',
+  story: 'braved the storm, dodged the lightning and lit the old lighthouse.',
+  unlockNote: 'Plus storm gear: a wind sock, a lightning rod, a storm kite, a jet ski and more.',
+  terrain: { amp0: 12, ampGrowth: 260, ampMax: 46, ridge: 1.3, detail: 1.2, terrace: 0, sea: -6, base: -4, runout: 3 },
+  sky: {
+    lowTop: hexToRgb('#3d5a80'),
+    lowBottom: hexToRgb('#b8d4d8'),
+    highTop: hexToRgb('#141c33'),
+    highBottom: hexToRgb('#4f6d8f'),
+    sun: '#f4f1de',
+    sunGlow: '230,240,255',
+    volcano: false,
+    storm: true,
+  },
+  biomes: [
+    biome({
+      name: 'Palm Beach',
+      start: -Infinity,
+      colors: ['#f0d8a0', '#c09a62', '#fff3cf', '#7fa8a4'],
+      pond: 'water',
+      scenery: [['palm', 0.16], ['shrub', 0.06], ['shell', 0.08], ['rock', 0.04], ['parasol', 0.015]],
+      enemies: [['gull', 1]],
+      enemyGap: 190,
+      wind: 0.25,
+    }),
+    biome({
+      name: 'Coral Shallows',
+      start: 2200,
+      colors: ['#e9cf95', '#b48f58', '#fff0c4', '#6f9fa6'],
+      pond: 'water',
+      scenery: [['palm', 0.12], ['shell', 0.08], ['rock', 0.06], ['shrub', 0.05]],
+      enemies: [['gull', 2], ['fish', 2]],
+      enemyGap: 150,
+      wind: 0.4,
+      rain: 0.15,
+    }),
+    biome({
+      name: 'Open Sea',
+      start: 5500,
+      colors: ['#8f8a7c', '#5b574d', '#c9c2ad', '#4f6f84'],
+      pond: 'water',
+      scenery: [['basalt', 0.08], ['rock', 0.08], ['palm', 0.04], ['shell', 0.04]],
+      enemies: [['fish', 3], ['gull', 2]],
+      enemyGap: 125,
+      wind: 0.55,
+      lightning: 520,
+      rain: 0.45,
+    }),
+    biome({
+      name: 'Storm Front',
+      start: 9500,
+      colors: ['#5e6670', '#363c45', '#a3adb8', '#3a4a5e'],
+      pond: 'water',
+      scenery: [['basalt', 0.1], ['charred', 0.06], ['rock', 0.08]],
+      enemies: [['gull', 2], ['fish', 2], ['bat', 1]],
+      enemyGap: 105,
+      wind: 0.7,
+      lightning: 230,
+      rain: 1,
+    }),
+    biome({
+      name: 'The Lighthouse',
+      start: STORM_GOAL - 200,
+      colors: ['#8fc46a', '#4f8a3c', '#d4f0a0', '#7fa8a4'],
+      grass: true,
+      pond: 'water',
+      scenery: [['flowers', 0.2], ['shrub', 0.08], ['lantern', 0.05], ['palm', 0.05]],
+    }),
+  ],
+};
+
+export const MAPS: Record<MapId, MapDef> = { valley: VALLEY, canyon: CANYON, storm: STORM };
+export const MAP_ORDER: MapId[] = ['valley', 'canyon', 'storm'];

@@ -53,6 +53,10 @@ export type FlightEventType =
   | 'enemyDown'
   | 'hurt'
   | 'shielded'
+  | 'gust'
+  | 'thunder'
+  | 'zap'
+  | 'charged'
   | 'goal'
   | 'done';
 
@@ -95,6 +99,25 @@ const REGEN_REFILLS = 2;
 /** First enemy spawn, and how far ahead of the panda enemies appear. */
 const FIRST_ENEMY_X = 220;
 const PANDA_HIT_RADIUS = 1.1;
+/** Seconds of warning flicker before lightning strikes, and how long a bolt lasts. */
+const STRIKE_WARN = 1.15;
+const STRIKE_BOLT = 0.35;
+/** A strike this close (horizontally) hits the panda. */
+const STRIKE_REACH = 3.6;
+/** Acceleration per m/s of gust wind. */
+const WIND_PUSH = 0.16;
+/** Storm clouds hang this high: lightning only strikes below them. */
+const CLOUD_BASE = 650;
+
+/** A lightning strike: it flickers at `x` while `warn` counts down, then hits. */
+export interface Strike {
+  x: number;
+  warn: number;
+  bolt: number;
+  /** Cloud base the bolt falls from. */
+  top: number;
+  seed: number;
+}
 const STOP_SPEED = 0.7;
 const STOP_HOLD = 0.6;
 const MAX_GROUND_TIME = 30;
@@ -164,8 +187,11 @@ export class Flight {
   shield: number;
   kills = 0;
   bounty = 0;
-  /** Last laser beam, for drawing: start, angle, length and age. */
-  beam: { x: number; y: number; a: number; len: number; age: number } | null = null;
+  /** Last beam weapon shot, for drawing: start, angle, length, age and any chain-lightning hops. */
+  beam: { x: number; y: number; a: number; len: number; age: number; style: string; hops: { x: number; y: number }[] } | null = null;
+  /** Lightning strikes in progress. */
+  readonly strikes: Strike[] = [];
+  private nextStrikeX = 0;
   private fireCooldown = 0;
   private nextSpawnX = FIRST_ENEMY_X;
   private enemyId = 0;
@@ -173,6 +199,8 @@ export class Flight {
   private readonly coinMul: number;
   /** Vertical wind (thermal) felt this step, m/s. */
   updraft = 0;
+  /** Horizontal wind (gusts) felt this step, m/s, + = tailwind. */
+  wind = 0;
 
   readonly events: FlightEvent[] = [];
 
@@ -269,6 +297,7 @@ export class Flight {
       this.maxX = Math.max(this.maxX, this.x);
       this.collectPickups(dt);
       this.combat(dt, input);
+      this.weather(dt);
       const goal = this.world.map.goal;
       if (!this.reachedGoal && this.x >= goal) {
         this.reachedGoal = true;
@@ -313,6 +342,11 @@ export class Flight {
     const wasIn = this.updraft > 1;
     this.updraft = this.onGround ? 0 : this.world.updraft(this.x, this.y) * thermalMul;
     if (!wasIn && this.updraft > 1) this.emit('thermal', this.updraft);
+    // Gusts shove the panda along (or hold it back). Big sails catch more of it.
+    const windMul = Math.min(2, (glider.wind ?? 1) * gadgetMul(this.gear, 'windMul'));
+    const hadWind = Math.abs(this.wind) > 2;
+    this.wind = this.onGround ? 0 : this.world.wind(this.x, this.y) * windMul;
+    if (!hadWind && Math.abs(this.wind) > 2) this.emit('gust', this.wind);
     const rvx = this.vx;
     const rvy = this.vy - this.updraft;
     const v = Math.hypot(rvx, rvy);
@@ -345,6 +379,7 @@ export class Flight {
       if (glider.rotor && this.vy < 0) ay += glider.rotor * this.vy * this.vy * rho * this.lightness;
     }
     this.angleOfAttack = alpha;
+    ax += this.wind * WIND_PUSH * Math.sqrt(this.lightness);
 
     if (boost) {
       ax += Math.cos(this.pitch) * this.thrust * this.lightness;
@@ -399,16 +434,24 @@ export class Flight {
         return;
       }
       // Ice is slick; water drags, but a shallow, fast landing skips like a stone.
-      const surfaceGrip = surface === 'ice' ? 0.25 : surface === 'water' ? 1.6 : 1;
-      const grip = (sled.groundGlide ?? 1) * surfaceGrip;
-      const skipping = surface === 'water' && impact < Math.abs(vt) * 0.35 && Math.abs(vt) > 10;
+      // Jet skis skim it, and water wings bounce off it.
+      const water = surface === 'water';
+      const skim = water && !!sled.waterSkim;
+      const floaties = water && hasGadget(this.gear, 'floaties');
+      const surfaceGrip = surface === 'ice' ? 0.25 : skim ? 0.15 : water ? 1.6 : 1;
+      const grip = (skim ? 1 : (sled.groundGlide ?? 1)) * surfaceGrip;
+      const skipping =
+        water &&
+        ((floaties && Math.abs(vt) > 5) ||
+          (skim && impact < Math.abs(vt) * 0.8 && Math.abs(vt) > 6) ||
+          (impact < Math.abs(vt) * 0.35 && Math.abs(vt) > 10));
       // Sliding friction for resting contact; a gentler share for the crash itself,
       // so a hard landing turns into a long slide rather than a dead stop.
       const mu = (GROUND_FRICTION + sled.friction) * grip;
       const muCrash = (IMPACT_FRICTION + sled.friction * 0.5) * (skipping ? 0.3 : grip);
       const loss = mu * Math.min(impact, 3) + muCrash * Math.max(0, impact - 3);
       vt = Math.sign(vt) * Math.max(0, Math.abs(vt) - loss);
-      const restitution = skipping ? 0.65 : (sled.bounce ?? RESTITUTION);
+      const restitution = floaties && skipping ? 0.78 : skipping ? 0.65 : (sled.bounce ?? RESTITUTION);
       const threshold = skipping ? 1 : sled.bounce ? BOUNCE_SPEED * 0.4 : BOUNCE_SPEED;
       const bounce = impact > threshold ? impact * restitution : 0;
       this.vx = tx * vt + nx * bounce;
@@ -518,8 +561,9 @@ export class Flight {
       if (thrown) this.shots.push(thrown);
       const reach = e.radius + PANDA_HIT_RADIUS;
       if (segDist2(e.x, e.y, this.prevStepX, this.prevStepY, px, py) < reach * reach) this.ram(e);
-      // Out of the picture: left far behind or lost.
+      // Out of the picture: left far behind or lost. Fish drop back into the sea.
       if (e.x < px - 180 || Math.abs(e.y - py) > 500) e.dead = true;
+      if (e.kind === 'fish' && e.age > 0.3 && e.vy < 0 && e.y < this.world.groundY(e.x) - 0.5) e.dead = true;
     }
     this.fireWeapon(dt, input);
     for (const sh of this.shots) {
@@ -583,12 +627,99 @@ export class Flight {
         break;
       }
     }
+    if (kind === 'fish') {
+      if (this.leapFish(sx)) {
+        this.nextSpawnX = this.x + (biome.enemyGap ?? 150) * (0.6 + r() * 0.8);
+        return;
+      }
+      kind = 'gull';
+    }
     const ground = this.world.groundY(sx);
     const y = Math.max(ground + 8, this.y + (kind === 'bandit' ? 5 + r() * 35 : -10 + r() * 24));
     // Crows sometimes come in pairs.
     const count = kind === 'crow' && r() < 0.35 ? 2 : 1;
     for (let i = 0; i < count; i++) this.enemies.push(makeEnemy(this.enemyId++, kind, sx + i * 6, y + i * 4));
     this.nextSpawnX = this.x + (biome.enemyGap ?? 150) * (0.6 + r() * 0.8);
+  }
+
+  /**
+   * A flying fish leaps out of the sea ahead, timed to cross the panda's path.
+   * Returns false if there is no water there or the panda is too high to reach.
+   */
+  private leapFish(sx: number): boolean {
+    let wx = NaN;
+    for (let d = 0; d <= 60; d += 10) {
+      if (this.world.surfaceAt(sx + d) === 'water') {
+        wx = sx + d;
+        break;
+      }
+    }
+    if (Number.isNaN(wx)) return false;
+    const sea = this.world.groundY(wx);
+    const rise = this.y - sea;
+    if (rise > 70) return false;
+    const h = clamp(rise + 4, 6, 70);
+    const vy = Math.sqrt(2 * GRAVITY * h);
+    const t = vy / GRAVITY;
+    // Aim for where the panda will be at the top of the leap.
+    const meet = this.x + this.vx * t;
+    const fish = makeEnemy(this.enemyId++, 'fish', wx, sea - 0.3);
+    fish.vx = clamp((meet - wx) / t, -25, 25);
+    fish.vy = vy;
+    this.enemies.push(fish);
+    // Sometimes a whole school jumps.
+    if (this.rng() < 0.4) {
+      const f2 = makeEnemy(this.enemyId++, 'fish', wx + 4, sea - 0.3);
+      f2.vx = fish.vx;
+      f2.vy = vy * 0.9;
+      this.enemies.push(f2);
+    }
+    return true;
+  }
+
+  /** Lightning: storm biomes drop telegraphed strikes onto the panda's path. */
+  private weather(dt: number): void {
+    const biome = mainBiome(this.world.biomeAt(this.x));
+    if (biome.lightning && this.x >= this.nextStrikeX && this.y < CLOUD_BASE - 40) {
+      const r = this.rng;
+      // Lead the target so a pilot who holds course gets hit; changing speed or height dodges it.
+      const x = this.x + this.vx * STRIKE_WARN * (0.85 + r() * 0.3) + (r() - 0.5) * 6;
+      this.strikes.push({ x, warn: STRIKE_WARN, bolt: 0, top: CLOUD_BASE, seed: Math.floor(r() * 1e6) });
+      this.nextStrikeX = this.x + biome.lightning * (0.6 + r() * 0.8);
+    } else if (!biome.lightning) {
+      this.nextStrikeX = this.x + 60;
+    }
+    for (const s of this.strikes) {
+      if (s.warn > 0) {
+        s.warn -= dt;
+        if (s.warn <= 0) this.strike(s);
+      } else s.bolt += dt;
+    }
+    for (let i = this.strikes.length - 1; i >= 0; i--) if (this.strikes[i].bolt > STRIKE_BOLT) this.strikes.splice(i, 1);
+  }
+
+  private strike(s: Strike): void {
+    this.events.push({ type: 'thunder', x: s.x, y: this.world.groundY(s.x), amount: 1 });
+    // Anything caught in the column gets fried, enemies included.
+    for (const e of this.enemies) if (!e.dead && Math.abs(e.x - s.x) < STRIKE_REACH + e.radius) this.damage(e, 99);
+    if (Math.abs(this.x - s.x) > STRIKE_REACH || this.phase !== 'air' || this.y > CLOUD_BASE) return;
+    const { rocket } = this.gear;
+    if (rocket.lightningCharge) {
+      // A jolt tops the tank up by a third.
+      this.fuel = Math.min(this.maxFuel, this.fuel + this.maxFuel / 3);
+      this.events.push({ type: 'charged', x: this.x, y: this.y, amount: this.fuel });
+    }
+    if (hasGadget(this.gear, 'lightningRod')) {
+      // Channel it: a jolt forwards.
+      const v = Math.hypot(this.vx, this.vy) || 1;
+      const kick = 16 * Math.sqrt(this.lightness);
+      this.vx += (this.vx / v) * kick;
+      this.vy += (this.vy / v) * kick + 3;
+      this.events.push({ type: 'zap', x: this.x, y: this.y, amount: 1, tag: 'rod' });
+      return;
+    }
+    this.events.push({ type: 'zap', x: this.x, y: this.y, amount: 0 });
+    this.hurt(0.6, 15);
   }
 
   private fireWeapon(dt: number, input: FlightInput): void {
@@ -603,8 +734,31 @@ export class Flight {
     this.events.push({ type: 'shoot', x: mx, y: my, amount: this.ammo, tag: w.style });
     if (w.hitscan) {
       const hit = beamHit(this.enemies, mx, my, a, w.hitscan);
-      this.beam = { x: mx, y: my, a, len: hit.length, age: 0 };
-      if (hit.enemy) this.damage(hit.enemy, w.damage);
+      const hops: { x: number; y: number }[] = [];
+      this.beam = { x: mx, y: my, a, len: hit.length, age: 0, style: w.style, hops };
+      if (hit.enemy) {
+        // Chain lightning arcs on to the nearest enemies it hasn't hit yet.
+        let from = hit.enemy;
+        const struck = new Set([from.id]);
+        hops.push({ x: from.x, y: from.y });
+        for (let i = 0; i < (w.chain ?? 0); i++) {
+          let next: Enemy | null = null;
+          let best = 32 * 32;
+          for (const e of this.enemies) {
+            if (e.dead || struck.has(e.id)) continue;
+            const d = (e.x - from.x) ** 2 + (e.y - from.y) ** 2;
+            if (d < best) {
+              best = d;
+              next = e;
+            }
+          }
+          if (!next) break;
+          struck.add(next.id);
+          hops.push({ x: next.x, y: next.y });
+          from = next;
+        }
+        for (const e of this.enemies) if (struck.has(e.id)) this.damage(e, w.damage);
+      }
       return;
     }
     this.shots.push({

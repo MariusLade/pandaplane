@@ -1,5 +1,5 @@
 import type { Enemy, Shot } from '../game/combat';
-import type { Flight } from '../game/flight';
+import type { Flight, Strike } from '../game/flight';
 import type { World } from '../game/world';
 import type { Camera } from './camera';
 
@@ -48,9 +48,12 @@ export function drawEnemies(ctx: CanvasRenderingContext2D, cam: Camera, enemies:
     ctx.translate(x, y);
     ctx.scale(scale, scale);
     // Face the direction of travel (bandits always face the panda, to the left).
+    if (e.kind === 'fish') ctx.rotate(-Math.atan2(e.vy, e.vx) + (e.vx < 0 ? Math.PI : 0));
     if (e.kind !== 'bandit' && e.vx > 0) ctx.scale(-1, 1);
     if (e.kind === 'crow') drawCrow(ctx, e, time);
     else if (e.kind === 'bat') drawBat(ctx, e, time);
+    else if (e.kind === 'gull') drawGull(ctx, e, time);
+    else if (e.kind === 'fish') drawFish(ctx, e, time);
     else drawBandit(ctx, e, time);
     if (e.hurt > 0) {
       ctx.globalCompositeOperation = 'source-atop';
@@ -142,6 +145,122 @@ function drawBat(ctx: CanvasRenderingContext2D, e: Enemy, time: number) {
   ctx.arc(-0.12, -0.05, 0.07, 0, Math.PI * 2);
   ctx.arc(0.08, -0.05, 0.07, 0, Math.PI * 2);
   ctx.fill();
+}
+
+/** A grumpy seagull with long bent wings. */
+function drawGull(ctx: CanvasRenderingContext2D, e: Enemy, time: number) {
+  const flap = Math.sin(time * 9 + e.id) * 0.7;
+  ctx.lineJoin = 'round';
+  // Far wing.
+  ctx.fillStyle = '#c9d2dc';
+  ctx.beginPath();
+  ctx.moveTo(0, -0.1);
+  ctx.lineTo(0.5, -0.5 - flap * 0.5);
+  ctx.lineTo(1.4, -0.3 - flap * 0.9);
+  ctx.quadraticCurveTo(0.7, -0.1, 0.3, 0.1);
+  ctx.fill();
+  // Body.
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 0.75, 0.32, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#9aa3ad';
+  ctx.beginPath();
+  ctx.moveTo(0.6, -0.05);
+  ctx.lineTo(1.1, -0.2);
+  ctx.lineTo(1.05, 0.15);
+  ctx.closePath();
+  ctx.fill();
+  // Head, beak and a very judgemental eye.
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(-0.68, -0.22, 0.28, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffb238';
+  ctx.beginPath();
+  ctx.moveTo(-0.9, -0.24);
+  ctx.lineTo(-1.35, -0.16);
+  ctx.lineTo(-0.9, -0.08);
+  ctx.fill();
+  ctx.fillStyle = '#e2493b';
+  ctx.beginPath();
+  ctx.arc(-1.12, -0.13, 0.04, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#1f1d24';
+  ctx.beginPath();
+  ctx.arc(-0.76, -0.28, 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1f1d24';
+  ctx.lineWidth = 0.05;
+  ctx.beginPath();
+  ctx.moveTo(-0.88, -0.4);
+  ctx.lineTo(-0.62, -0.36);
+  ctx.stroke();
+  // Near wing with dark tips.
+  ctx.fillStyle = '#e4e9ee';
+  ctx.beginPath();
+  ctx.moveTo(-0.1, -0.05);
+  ctx.lineTo(0.35, -0.55 - flap * 0.6);
+  ctx.lineTo(1.25, -0.35 - flap * 1.1);
+  ctx.quadraticCurveTo(0.6, -0.05, 0.2, 0.12);
+  ctx.fill();
+  ctx.fillStyle = '#1f1d24';
+  ctx.beginPath();
+  ctx.moveTo(1.25, -0.35 - flap * 1.1);
+  ctx.lineTo(0.95, -0.38 - flap * 0.95);
+  ctx.lineTo(1.05, -0.22 - flap * 0.8);
+  ctx.fill();
+}
+
+/** A flying fish, fins spread, dripping water. */
+function drawFish(ctx: CanvasRenderingContext2D, e: Enemy, time: number) {
+  const wag = Math.sin(time * 20 + e.id) * 0.15;
+  // Wing-like fins.
+  ctx.fillStyle = 'rgba(140,220,255,0.75)';
+  ctx.beginPath();
+  ctx.moveTo(-0.1, -0.05);
+  ctx.quadraticCurveTo(0.2, -0.9, 0.7, -0.6);
+  ctx.quadraticCurveTo(0.4, -0.2, 0.3, 0);
+  ctx.fill();
+  // Body.
+  const g = ctx.createLinearGradient(0, -0.3, 0, 0.3);
+  g.addColorStop(0, '#2f7de1');
+  g.addColorStop(1, '#bfe6ff');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 0.75, 0.28, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Tail.
+  ctx.fillStyle = '#2f7de1';
+  ctx.beginPath();
+  ctx.moveTo(0.65, 0);
+  ctx.lineTo(1.15, -0.35 + wag);
+  ctx.lineTo(1.0, 0);
+  ctx.lineTo(1.15, 0.35 + wag);
+  ctx.closePath();
+  ctx.fill();
+  // Eye and frown.
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(-0.45, -0.06, 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#1f1d24';
+  ctx.beginPath();
+  ctx.arc(-0.48, -0.06, 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1f1d24';
+  ctx.lineWidth = 0.04;
+  ctx.beginPath();
+  ctx.arc(-0.66, 0.14, 0.08, Math.PI * 1.2, Math.PI * 1.9);
+  ctx.stroke();
+  // Droplets.
+  ctx.fillStyle = 'rgba(200,235,255,0.8)';
+  for (let i = 0; i < 3; i++) {
+    const t = (time * 2 + i / 3 + e.id * 0.1) % 1;
+    ctx.beginPath();
+    ctx.arc(0.8 + t * 0.6, 0.2 + t * t * 0.8, 0.06 * (1 - t), 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 /** A red panda bandit in a patched hot-air balloon. */
@@ -280,6 +399,39 @@ function dot(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, fil
   ctx.stroke();
 }
 
+/** Jagged lightning between screen points, deterministic per `seed`. */
+function bolt(ctx: CanvasRenderingContext2D, pts: [number, number][], seed: number, jag: number) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  let k = seed;
+  const rnd = () => {
+    k = (k * 16807) % 2147483647;
+    return k / 2147483647 - 0.5;
+  };
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, ay] = pts[i - 1];
+    const [bx, by] = pts[i];
+    const len = Math.hypot(bx - ax, by - ay);
+    const n = Math.max(2, Math.round(len / 18));
+    const nx = -(by - ay) / (len || 1);
+    const ny = (bx - ax) / (len || 1);
+    for (let j = 1; j < n; j++) {
+      const t = j / n;
+      const off = rnd() * jag * 2;
+      ctx.lineTo(ax + (bx - ax) * t + nx * off, ay + (by - ay) * t + ny * off);
+    }
+    ctx.lineTo(bx, by);
+  }
+}
+
+function strokeGlow(ctx: CanvasRenderingContext2D, layers: [number, string][]) {
+  for (const [w, c] of layers) {
+    ctx.strokeStyle = c;
+    ctx.lineWidth = w;
+    ctx.stroke();
+  }
+}
+
 export function drawBeam(ctx: CanvasRenderingContext2D, cam: Camera, f: Flight): void {
   const b = f.beam;
   if (!b) return;
@@ -288,6 +440,28 @@ export function drawBeam(ctx: CanvasRenderingContext2D, cam: Camera, f: Flight):
   const y0 = cam.sy(b.y);
   const x1 = cam.sx(b.x + Math.cos(b.a) * b.len);
   const y1 = cam.sy(b.y + Math.sin(b.a) * b.len);
+  if (b.style === 'zap') {
+    const pts: [number, number][] = [[x0, y0], ...(b.hops.length ? b.hops.map((h) => [cam.sx(h.x), cam.sy(h.y)] as [number, number]) : [[x1, y1] as [number, number]])];
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    bolt(ctx, pts, Math.floor(b.x * 13 + b.age * 400) + 7, 9);
+    strokeGlow(ctx, [
+      [12, `rgba(255,210,60,${0.25 * fade})`],
+      [5, `rgba(255,230,120,${0.7 * fade})`],
+      [2, `rgba(255,255,255,${fade})`],
+    ]);
+    for (const [hx, hy] of pts.slice(1)) {
+      const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, 26);
+      g.addColorStop(0, `rgba(255,240,170,${0.8 * fade})`);
+      g.addColorStop(1, 'rgba(255,200,60,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(hx - 26, hy - 26, 52, 52);
+    }
+    ctx.restore();
+    return;
+  }
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.lineCap = 'round';
@@ -337,6 +511,119 @@ export function drawThreatArrows(ctx: CanvasRenderingContext2D, cam: Camera, ene
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/** Bands of wind: streaming lines moving the way the air blows. */
+export function drawGusts(ctx: CanvasRenderingContext2D, cam: Camera, world: World, time: number): void {
+  for (const g of world.gustsIn(cam.wx(-50), cam.wx(cam.w + 50))) {
+    const x0 = cam.sx(g.x0);
+    const x1 = cam.sx(g.x1);
+    const yTop = cam.sy(g.y1);
+    const yBot = cam.sy(g.y0);
+    if (x1 < 0 || x0 > cam.w || yBot < 0 || yTop > cam.h) continue;
+    const dir = Math.sign(g.speed);
+    const tail = dir > 0;
+    // A faint tinted band: blue for tailwinds, red-ish for headwinds.
+    const tint = tail ? '170,225,255' : '255,190,170';
+    const band = ctx.createLinearGradient(0, yTop, 0, yBot);
+    band.addColorStop(0, `rgba(${tint},0)`);
+    band.addColorStop(0.5, `rgba(${tint},0.22)`);
+    band.addColorStop(1, `rgba(${tint},0)`);
+    ctx.fillStyle = band;
+    ctx.fillRect(x0, yTop, x1 - x0, yBot - yTop);
+    // Streaks.
+    ctx.lineCap = 'round';
+    const lanes = 9;
+    const speed = Math.abs(g.speed);
+    for (let i = 0; i < lanes; i++) {
+      const fy = (i + 0.5) / lanes;
+      const y = yTop + (yBot - yTop) * fy;
+      const len = Math.min(140, (x1 - x0) * 0.25);
+      const t = (time * speed * 0.035 + i * 0.37) % 1;
+      const p = dir > 0 ? t : 1 - t;
+      const x = x0 + (x1 - x0 + len) * p - len;
+      const a = Math.sin(t * Math.PI) * Math.min(1, (0.5 - Math.abs(fy - 0.5)) * 4);
+      ctx.strokeStyle = `rgba(255,255,255,${0.85 * a})`;
+      ctx.lineWidth = Math.max(2, 0.14 * cam.ppm);
+      ctx.beginPath();
+      const wob = Math.sin(time * 3 + i) * 3;
+      ctx.moveTo(Math.max(x0, x), y + wob);
+      ctx.quadraticCurveTo(x + len * 0.5, y - wob, Math.min(x1, x + len), y + wob * 0.5);
+      ctx.stroke();
+    }
+    // Chevrons at the edges hint at the direction.
+    const cy = (yTop + yBot) / 2;
+    const ax = dir > 0 ? x0 + 14 : x1 - 14;
+    ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.2 * Math.sin(time * 5)})`;
+    ctx.lineWidth = 3;
+    for (let k = 0; k < 2; k++) {
+      const bx = ax + dir * k * 12;
+      ctx.beginPath();
+      ctx.moveTo(bx - dir * 6, cy - 8);
+      ctx.lineTo(bx + dir * 4, cy);
+      ctx.lineTo(bx - dir * 6, cy + 8);
+      ctx.stroke();
+    }
+  }
+}
+
+/** Lightning: a flickering warning column, then the bolt. */
+export function drawStrikes(ctx: CanvasRenderingContext2D, cam: Camera, world: World, strikes: Strike[], time: number): void {
+  for (const s of strikes) {
+    const x = cam.sx(s.x);
+    if (x < -100 || x > cam.w + 100) continue;
+    const ground = cam.sy(world.groundY(s.x));
+    const top = Math.min(cam.sy(s.top), -20);
+    if (s.warn > 0) {
+      // Charging: a dashed column and a target ring on the ground, faster as it nears.
+      const urgency = 1 - s.warn / 1.15;
+      const flick = Math.sin(time * (14 + urgency * 30)) > 0 ? 1 : 0.4;
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,236,140,${(0.25 + urgency * 0.5) * flick})`;
+      ctx.lineWidth = 2 + urgency * 4;
+      ctx.setLineDash([10, 12]);
+      ctx.lineDashOffset = -time * 80;
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, ground);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const rr = (3.6 * cam.ppm) * (1.4 - urgency * 0.4);
+      ctx.strokeStyle = `rgba(255,220,80,${0.4 + urgency * 0.5})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(x, ground, Math.max(10, rr), Math.max(4, rr * 0.3), 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      continue;
+    }
+    const fade = 1 - s.bolt / 0.35;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Main bolt plus a couple of forks.
+    bolt(ctx, [[x + 10, top], [x, ground]], s.seed + Math.floor(s.bolt * 30), 16);
+    strokeGlow(ctx, [
+      [22, `rgba(160,190,255,${0.22 * fade})`],
+      [9, `rgba(220,230,255,${0.6 * fade})`],
+      [3, `rgba(255,255,255,${fade})`],
+    ]);
+    for (let k = 0; k < 2; k++) {
+      const fy = top + (ground - top) * (0.35 + k * 0.2);
+      bolt(ctx, [[x + 4, fy], [x + (k ? 50 : -60), fy + 90]], s.seed + k * 77, 10);
+      strokeGlow(ctx, [
+        [6, `rgba(200,215,255,${0.4 * fade})`],
+        [1.5, `rgba(255,255,255,${0.8 * fade})`],
+      ]);
+    }
+    const g = ctx.createRadialGradient(x, ground, 0, x, ground, 90);
+    g.addColorStop(0, `rgba(255,255,230,${0.7 * fade})`);
+    g.addColorStop(1, 'rgba(160,190,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - 90, ground - 90, 180, 180);
     ctx.restore();
   }
 }

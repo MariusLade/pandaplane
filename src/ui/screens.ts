@@ -1,5 +1,5 @@
 import type { Earnings } from '../game/economy';
-import { MAPS } from '../game/maps';
+import { MAPS, MAP_ORDER } from '../game/maps';
 import type { SaveData } from '../game/save';
 import { STATS, buildSummary, statMax } from '../game/stats';
 import {
@@ -209,7 +209,7 @@ export class Screens {
           ${mapButton}
           <span>🐼</span>
           <div class="goal-track"><div class="goal-fill" style="width:${(progress * 100).toFixed(1)}%"></div></div>
-          <span>${map.id === 'canyon' ? '🏯' : '🎋'}</span>
+          <span>${map.icon}</span>
           <em>${prog.goalReached ? `${map.goalName} reached!` : `${Math.round(progress * 100)}% to ${map.goalName}`}</em>
         </div>
         <div class="hangar-body">
@@ -328,7 +328,7 @@ export class Screens {
         <div class="shop-says"><span class="mini-panda">🐼</span><div class="bubble left">${escape(says)}</div></div>
         ${isSensor ? '<p class="shop-note">Equip as many instruments as you like, but only one per slot. Without one, that reading stays hidden in flight.</p>' : ''}
         ${isGadget ? `<p class="shop-note">Wear up to ${MAX_GADGETS} gadgets at once.</p>` : ''}
-        ${category === 'weapon' ? `<p class="shop-note">Hold <b>${isTouch() ? 'FIRE' : 'F'}</b> to shoot where your nose points. Enemies only show up in ${MAPS.canyon.name}.</p>` : ''}
+        ${category === 'weapon' ? `<p class="shop-note">Hold <b>${isTouch() ? 'FIRE' : 'F'}</b> to shoot where your nose points. Enemies show up in ${MAPS.canyon.name} and ${MAPS.storm.name}.</p>` : ''}
         <div class="items">${cards}</div>
       </div>`);
     const previews: Preview[] = [];
@@ -444,16 +444,15 @@ export class Screens {
 
   showVictory(day: number, mapId: SaveData['map'], unlockedName: string | null): void {
     const map = MAPS[mapId];
-    const story =
-      mapId === 'valley'
-        ? 'our panda finally reached the sweetest bamboo in the world.'
-        : 'our panda crossed the canyon of fire and rang the bell of the Golden Pagoda.';
+    const story = `our panda ${map.story}`;
+    const next = MAP_ORDER[MAP_ORDER.indexOf(mapId) + 1];
+    const note = next ? MAPS[next].unlockNote : '';
     const unlock = unlockedName
-      ? `<p class="unlock-banner">🔓 New map unlocked: <b>${escape(unlockedName)}</b>!<br><small>Plus new shops: Weapons and Gadgets, and new top-tier gear.</small></p>`
+      ? `<p class="unlock-banner">🔓 New map unlocked: <b>${escape(unlockedName)}</b>!${note ? `<br><small>${escape(note)}</small>` : ''}</p>`
       : '<p>The sky is still big, though. Keep flying for new records!</p>';
     const el = h(`
       <div class="paper victory">
-        <div class="confetti-row">${mapId === 'canyon' ? '🏯🐼🏯' : '🎋🐼🎋'}</div>
+        <div class="confetti-row">${map.icon}🐼${map.icon}</div>
         <h2>${escape(map.goalName)}!</h2>
         <p>After <b>${day}</b> day${day === 1 ? '' : 's'} of slides, glides and questionable rockets, ${story}</p>
         ${unlock}

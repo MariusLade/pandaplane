@@ -188,7 +188,7 @@ class Game {
     this.save.map = list[(list.indexOf(this.save.map) + 1) % list.length];
     this.persist();
     this.renderer.bg.setSeed(this.save.worldSeed + MAPS[this.save.map].seedSalt);
-    this.toHangar(this.save.map === 'canyon' ? 'Ember Canyon. Bring sunscreen.' : 'Home sweet bamboo.');
+    this.toHangar(MAPS[this.save.map].hello);
   }
 
   private openShop(category: ShopCategory, says?: string): void {
@@ -272,9 +272,9 @@ class Game {
 
   private showFlightUi(on: boolean): void {
     this.hud.show(on);
-    this.instruments.show(on);
     const touch = this.input.touchSeen || matchMedia('(pointer: coarse)').matches;
     this.touch.hidden = !(on && touch);
+    this.instruments.show(on);
     $('#btn-boost').hidden = this.flight.gear.rocket.thrust <= 0 && !this.flight.gear.glider.flaps;
     $('#btn-fire').hidden = this.flight.gear.weapon.rate <= 0;
     if (!on) this.prompt.hidden = true;
@@ -496,6 +496,12 @@ class Game {
         case 'thermal':
           if (Math.random() < 0.3) this.say(quip('thermal'));
           break;
+        case 'gust':
+          if (Math.random() < 0.35) this.say(quip(ev.amount > 0 ? 'tailwind' : 'headwind'));
+          break;
+        case 'zap':
+          this.say(quip(ev.tag === 'rod' ? 'rod' : 'zap'));
+          break;
         default:
           break;
       }
@@ -529,7 +535,7 @@ class Game {
         case 'goal': {
           this.sound.fanfare();
           const map = this.world.map;
-          const icon = map.id === 'canyon' ? '🏯' : '🎋';
+          const icon = map.icon;
           this.hud.showToast(`${icon} You reached ${map.goalName}! ${icon}`, 4000);
           break;
         }
@@ -551,6 +557,18 @@ class Game {
           break;
         case 'lava':
           this.sound.sizzle();
+          break;
+        case 'thunder':
+          this.sound.thunder();
+          break;
+        case 'zap':
+          this.sound.zap();
+          break;
+        case 'charged':
+          this.sound.ring();
+          break;
+        case 'gust':
+          this.sound.whoosh();
           break;
         case 'done':
           break;

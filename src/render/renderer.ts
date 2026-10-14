@@ -6,7 +6,8 @@ import { Background } from './background';
 import { Camera } from './camera';
 import { drawPanda, nozzleOffset, type Mood } from './panda';
 import { Particles } from './particles';
-import { drawBeam, drawEnemies, drawShots, drawThermals, drawThreatArrows } from './combat';
+import { drawBeam, drawEnemies, drawGusts, drawShots, drawStrikes, drawThermals, drawThreatArrows } from './combat';
+import { storminess } from './background';
 import { drawPickups } from './pickups';
 import { drawDecor, drawRamp, drawSigns, drawTerrain } from './terrain';
 
@@ -36,6 +37,8 @@ export class Renderer {
   private speech = { text: '', time: 0, duration: 0 };
   /** Seconds since the last wing beat, for the flap animation. */
   private sinceFlap = 99;
+  /** Lightning flash brightness, fading to 0. */
+  private flash = 0;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -177,8 +180,28 @@ export class Renderer {
           p.burst(ev.x, ev.y, 6, 'spark', '#fff3b0', 8, 0.1, 0.3);
         }
         break;
+      case 'thunder':
+        this.flash = Math.max(this.flash, 0.55);
+        this.cam.addShake(0.35);
+        p.burst(ev.x, ev.y + 0.3, 16, 'ember', '#fff3b0', 14, 0.1, 0.6);
+        p.burst(ev.x, ev.y + 0.3, 10, 'puff', '#d8dde6', 5, 0.6, 0.8);
+        break;
+      case 'zap':
+        this.flash = 1;
+        this.cam.addShake(0.7);
+        p.burst(ev.x, ev.y, 24, 'spark', ev.tag === 'rod' ? '#9fe3ff' : '#fff3b0', 14, 0.12, 0.5);
+        p.spawn({ kind: 'ring', x: ev.x, y: ev.y, vx: 0, vy: 0, life: 0.4, size: 4, color: ev.tag === 'rod' ? '#9fe3ff' : '#fff3b0', gravity: 0, drag: 0 });
+        if (ev.tag === 'rod') p.text(ev.x, ev.y + 2.5, 'ZAP BOOST!', '#9fe3ff');
+        break;
+      case 'charged':
+        p.text(ev.x, ev.y + 3.5, '+FUEL', '#ffd23d');
+        break;
+      case 'gust':
+        p.burst(ev.x, ev.y, 8, 'puff', '#ffffff', 6, 0.3, 0.5);
+        break;
       case 'enemyDown': {
-        const color = ev.tag === 'bandit' ? '#c4532a' : ev.tag === 'bat' ? '#7a2a22' : '#1f1d24';
+        const color =
+          ev.tag === 'bandit' ? '#c4532a' : ev.tag === 'bat' ? '#7a2a22' : ev.tag === 'gull' ? '#ffffff' : ev.tag === 'fish' ? '#5fb0ff' : '#1f1d24';
         p.burst(ev.x, ev.y, 14, 'confetti', color, 9, 0.18, 1.2);
         p.burst(ev.x, ev.y, 10, 'puff', '#ffffff', 5, 0.5, 0.6);
         p.text(ev.x, ev.y + 2, `+$${ev.amount}`, '#ffe066');
@@ -224,7 +247,7 @@ export class Renderer {
       const vx = flight.phase === 'air' ? flight.vx : 0;
       const vy = flight.phase === 'air' ? flight.vy : 0;
       const style = flight.gear.rocket.style;
-      const ion = style === 'ion';
+      const ion = style === 'ion' || style === 'thunder';
       const steamy = style === 'soda' || style === 'cola' || style === 'kettle';
       const power = clamp(flight.thrust / 30, 0.2, 1.2);
       const size = Math.min(scale, 3.5);
@@ -246,7 +269,7 @@ export class Renderer {
         });
       }
       // Sparks flung out of the exhaust.
-      if (!steamy && !ion && Math.random() < dt * (12 + power * 25)) {
+      if (!steamy && (!ion || style === 'thunder') && Math.random() < dt * (12 + power * 25)) {
         p.spawn({
           kind: 'ember',
           x: nx,
@@ -255,7 +278,7 @@ export class Renderer {
           vy: vy * 0.5 - s * 14 + (Math.random() - 0.5) * 14,
           life: 0.4 + Math.random() * 0.4,
           size: 0.06 * size,
-          color: Math.random() < 0.5 ? '#ffd27a' : '#ff8a3d',
+          color: style === 'thunder' ? (Math.random() < 0.5 ? '#fff3b0' : '#9fd8ff') : Math.random() < 0.5 ? '#ffd27a' : '#ff8a3d',
           gravity: 6,
           drag: 1,
         });
@@ -345,12 +368,13 @@ export class Renderer {
     drawDecor(ctx, cam, world, time, this.dpr, 'back');
     drawTerrain(ctx, cam, world, time);
     drawDecor(ctx, cam, world, time, this.dpr, 'front');
-    drawSigns(ctx, cam, world);
+    drawSigns(ctx, cam, world, time);
     drawRamp(ctx, cam, flight.ramp, world);
 
     this.pickBuf.length = 0;
     world.pickupsIn(cam.wx(-50), cam.wx(cam.w + 50), this.pickBuf);
     drawThermals(ctx, cam, world, time);
+    drawGusts(ctx, cam, world, time);
     drawPickups(ctx, cam, this.pickBuf, time, Math.max(cam.ppm, PICKUP_MIN_PPM));
 
     const scale = this.pandaScale();
@@ -372,11 +396,49 @@ export class Renderer {
       thrust: clamp(flight.thrust / 30, 0.15, 1.2),
     });
     if (flight.shield > 0 && flight.phase !== 'done') this.drawShield(sx, sy, scale, time, flight.shield);
+    drawStrikes(ctx, cam, world, flight.strikes, time);
     drawBeam(ctx, cam, flight);
+    this.drawRain(world, flight, time);
+    if (this.flash > 0.01) {
+      ctx.fillStyle = `rgba(235,240,255,${this.flash * 0.45})`;
+      ctx.fillRect(0, 0, cam.w, cam.h);
+      this.flash = Math.max(0, this.flash - dt * 3.5);
+    }
 
     this.drawStreaks(flight);
     if (flight.gear.gadgets.some((g) => g.threatRadar) && flight.phase === 'air') drawThreatArrows(ctx, cam, flight.enemies, time);
     this.drawSpeech(sx, sy - scale * 1.4, dt);
+  }
+
+  /** Slanting rain in stormy biomes, blown by the wind and the panda's speed. */
+  private drawRain(world: World, flight: Flight, time: number): void {
+    const cam = this.cam;
+    const rain = storminess(world, cam.x) * (1 - clamp((cam.y - 300) / 900, 0, 1));
+    if (rain < 0.02) return;
+    const ctx = this.ctx;
+    const n = Math.round(rain * 170);
+    // Drops streak against the direction of travel.
+    const vx = (flight.phase === 'air' ? -flight.vx * 0.25 : 0) - 6 - flight.wind * 0.3;
+    const vy = 30 + (flight.phase === 'air' ? flight.vy * 0.25 : 0);
+    const len = Math.min(40, Math.hypot(vx, vy) * 0.9);
+    const ang = Math.atan2(vy, vx);
+    const dx = Math.cos(ang) * len;
+    const dy = Math.sin(ang) * len;
+    ctx.strokeStyle = 'rgba(210,225,245,0.45)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const h1 = Math.sin(i * 127.1) * 43758.5453;
+      const h2 = Math.sin(i * 311.7) * 12543.1234;
+      const r1 = h1 - Math.floor(h1);
+      const r2 = h2 - Math.floor(h2);
+      const speed = 0.9 + r2 * 0.6;
+      const x = (((r1 * cam.w * 1.3 + time * dx * 14 * speed) % (cam.w * 1.3)) + cam.w * 1.3) % (cam.w * 1.3) - cam.w * 0.15;
+      const y = (((r2 * cam.h * 1.2 + time * dy * 14 * speed) % (cam.h * 1.2)) + cam.h * 1.2) % (cam.h * 1.2) - cam.h * 0.1;
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + dx, y + dy);
+    }
+    ctx.stroke();
   }
 
   /** A wobbly soap bubble around the panda while the shield holds. */

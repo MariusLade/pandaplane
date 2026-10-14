@@ -104,6 +104,35 @@ function drawFuelPreview(ctx: CanvasRenderingContext2D, w: number, h: number, it
     ctx.fillRect(w / 2 - 3, h * 0.66, 6, h * 0.2);
     return;
   }
+  if (item.style === 'battery') {
+    // A chunky battery with a lightning bolt.
+    const tw = w * 0.42;
+    const th = h * 0.6;
+    const x = (w - tw) / 2;
+    const y = (h - th) / 2 + 4;
+    ctx.fillStyle = '#3a3f4b';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(x, y, tw, th, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#c9ced6';
+    ctx.fillRect(x + tw * 0.38, y - 7, tw * 0.24, 8);
+    ctx.fillStyle = '#ffd23d';
+    ctx.beginPath();
+    ctx.moveTo(w / 2 + 4, y + 6);
+    ctx.lineTo(w / 2 - 9, y + th * 0.55);
+    ctx.lineTo(w / 2, y + th * 0.55);
+    ctx.lineTo(w / 2 - 4, y + th - 6);
+    ctx.lineTo(w / 2 + 9, y + th * 0.42);
+    ctx.lineTo(w / 2, y + th * 0.42);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    return;
+  }
   if (item.style === 'nitro') {
     const tw = w * 0.18;
     const th = h * 0.72;
@@ -382,6 +411,30 @@ export function drawSensorGadget(ctx: CanvasRenderingContext2D, item: SensorItem
       ctx.stroke();
       break;
     }
+    case 'sock': {
+      // A striped windsock on a little pole, flapping.
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.7, cy + r);
+      ctx.lineTo(cx - r * 0.7, cy - r * 0.6);
+      ctx.stroke();
+      for (let i = 0; i < 4; i++) {
+        const t0 = i / 4;
+        const t1 = (i + 1) / 4;
+        const y = (t: number) => cy - r * 0.45 + Math.sin(time * 6 - t * 4) * r * 0.06 * t;
+        const hw = (t: number) => r * 0.3 * (1 - t * 0.45);
+        const x = (t: number) => cx - r * 0.7 + t * r * 1.6;
+        ctx.fillStyle = i % 2 ? '#ffffff' : '#e2493b';
+        ctx.beginPath();
+        ctx.moveTo(x(t0), y(t0) - hw(t0));
+        ctx.lineTo(x(t1), y(t1) - hw(t1));
+        ctx.lineTo(x(t1), y(t1) + hw(t1));
+        ctx.lineTo(x(t0), y(t0) + hw(t0));
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      break;
+    }
     case 'vane': {
       dial('#f3ecff', Math.PI * (1.6 + wobble * 0.4));
       ctx.fillStyle = '#e2493b';
@@ -426,6 +479,7 @@ const WEAPON_ICON: Record<WeaponItem['style'], string> = {
   bees: '🐝',
   snow: '❄️',
   laser: '🧐',
+  zap: '⚡',
 };
 
 const GADGET_ICON: Record<GadgetItem['style'], string> = {
@@ -436,6 +490,9 @@ const GADGET_ICON: Record<GadgetItem['style'], string> = {
   shield: '🫧',
   helmet: '⛑️',
   suit: '🧑‍🚒',
+  floaties: '🛟',
+  sail: '⛵',
+  rod: '🌩️',
 };
 
 /** A round coloured badge with an icon, gently bobbing. */
@@ -469,7 +526,19 @@ function drawWeaponPreview(ctx: CanvasRenderingContext2D, w: number, h: number, 
   const cx = w * 0.32;
   const cy = h / 2;
   if (item.rate > 0) {
-    if (item.hitscan) {
+    if (item.chain) {
+      // A jagged bolt that forks.
+      ctx.strokeStyle = '#ffd23d';
+      ctx.lineWidth = 2.5;
+      const seed = Math.floor(time * 12);
+      ctx.beginPath();
+      ctx.moveTo(cx + r, cy);
+      for (let i = 1; i <= 6; i++) {
+        const j = Math.sin(seed * 12.9 + i * 78.2) * 7;
+        ctx.lineTo(cx + r + (i / 6) * (w - cx - r - 8), cy + j);
+      }
+      ctx.stroke();
+    } else if (item.hitscan) {
       ctx.strokeStyle = `rgba(255,59,107,${0.5 + 0.5 * Math.sin(time * 12)})`;
       ctx.lineWidth = 3;
       ctx.beginPath();

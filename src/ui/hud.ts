@@ -34,6 +34,7 @@ export class Hud {
     this.ammoChip.hidden = f.gear.weapon.rate <= 0;
     this.shieldChip.hidden = f.shield <= 0;
     this.killsChip.hidden = f.gear.weapon.rate <= 0;
+    $('.hud-goal').textContent = f.world.map.icon;
     this.cache.clear();
   }
 
